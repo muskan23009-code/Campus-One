@@ -1,0 +1,9 @@
+{
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Campus One",
+      "onAutoForward": "notify"
+    }
+  }
+}
