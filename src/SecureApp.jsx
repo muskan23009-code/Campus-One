@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Check, LockKeyhole, RefreshCw, ShieldAlert, X } from 'lucide-react'
 import { api, ApiError } from './api/client'
 import { APP_ROLES, ROLE_START_PAGES, canSeePage } from './auth/access'
-import { RegistrationStatus, RegistrationView, RoleChooser, RoleLoginView } from './components/AuthViews.jsx'
+import { PasswordCreatedView, RegistrationStatus, RegistrationView, RoleChooser, RoleLoginView } from './components/AuthViews.jsx'
 import CampusManagement from './components/CampusManagement.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import DepartmentDashboard from './components/DepartmentDashboard.jsx'
@@ -51,6 +51,7 @@ export default function SecureApp() {
   const [registrationStatus, setRegistrationStatus] = useState(null)
   const [user, setUser] = useState(null)
   const [activePage, setActivePage] = useState('overview')
+  const [requestReference, setRequestReference] = useState(() => new URLSearchParams(window.location.search).get('request') || '')
   const [mobileNav, setMobileNav] = useState(false)
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
@@ -64,11 +65,14 @@ export default function SecureApp() {
   const applyRoute = useCallback((page, { replace = false, referenceId = '' } = {}) => {
     if (page === 'profile') { setModal('profile'); return }
     if (user && !canSeePage(user, page)) page = 'unauthorized'
+    setRequestReference(referenceId)
     setActivePage(page)
     setMobileNav(false)
-    const url = page === 'users' && referenceId
+    const url = referenceId && page === 'users'
       ? `${pageUrl(page)}?view=requests&request=${encodeURIComponent(referenceId)}`
-      : pageUrl(page)
+      : referenceId && page === 'department-requests'
+        ? `${pageUrl(page)}?request=${encodeURIComponent(referenceId)}`
+        : pageUrl(page)
     window.history[replace ? 'replaceState' : 'pushState']({}, '', url)
   }, [user])
 
@@ -109,7 +113,27 @@ export default function SecureApp() {
           window.history.replaceState({}, '', pageUrl(page))
         } catch (reason) {
           if (!active) return
-          if (reason instanceof ApiError && reason.status === 401) { setUser(null); setMode('roles') }
+          if (reason instanceof ApiError && reason.status === 401) {
+            setUser(null)
+            const savedRequest = window.localStorage.getItem('campus-registration-status')
+            if (savedRequest) {
+              try {
+                const saved = JSON.parse(savedRequest)
+                if (typeof saved.requestId !== 'string' || typeof saved.requestToken !== 'string') throw new Error('Invalid saved application reference.')
+                const status = await api('/api/registrations/status', {
+                  method: 'POST',
+                  body: { requestId: saved.requestId, requestToken: saved.requestToken },
+                })
+                if (!active) return
+                setRegistrationStatus({ application: status.application, requestToken: saved.requestToken })
+                setMode('registration-status')
+                return
+              } catch {
+                window.localStorage.removeItem('campus-registration-status')
+              }
+            }
+            setMode('roles')
+          }
           else throw reason
         }
       } catch (reason) {
@@ -130,7 +154,10 @@ export default function SecureApp() {
 
   useEffect(() => {
     if (mode !== 'authenticated') return undefined
-    function onPopState() { applyRoute(requestedPage(), { replace: true }) }
+    function onPopState() {
+      const referenceId = new URLSearchParams(window.location.search).get('request') || ''
+      applyRoute(requestedPage(), { replace: true, referenceId })
+    }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [applyRoute, mode])
@@ -138,6 +165,7 @@ export default function SecureApp() {
   async function signIn(credentials) {
     setLoading(true)
     setError('')
+    setLoginSuccess('')
     try {
       const result = await api('/api/auth/login', { method: 'POST', body: { ...credentials, role: selectedRole } })
       setUser(result.user)
@@ -161,8 +189,20 @@ export default function SecureApp() {
   }
 
   function acceptRegistration(submission) {
+    window.localStorage.setItem('campus-registration-status', JSON.stringify({
+      requestId: submission.application.id,
+      requestToken: submission.requestToken,
+    }))
     setRegistrationStatus(submission)
     setMode('registration-status')
+  }
+
+  function acceptPasswordSetup(role) {
+    window.localStorage.removeItem('campus-registration-status')
+    setRegistrationStatus(null)
+    setSelectedRole(role)
+    setError('')
+    setMode('password-created')
   }
 
   async function submitFeedback(event) {
@@ -191,9 +231,10 @@ export default function SecureApp() {
   if (mode === 'checking') return <main className="auth-loading"><span className="loading-spinner"/><span>Connecting securely to your campus…</span></main>
   if (mode === 'error') return <main className="auth-loading auth-load-error"><ShieldAlert size={27}/><strong>Campus One is having trouble connecting.</strong><span>{error}</span><button className="module-primary" onClick={() => window.location.reload()}><RefreshCw size={14}/> Try again</button></main>
   if (mode === 'roles') return <RoleChooser onChoose={(role) => { setSelectedRole(role); setError(''); setMode('role-login') }}/>
+  if (mode === 'password-created' && selectedRole) return <PasswordCreatedView onLogin={() => { setError(''); setMode('role-login') }}/>
   if (mode === 'role-login' && selectedRole) return <RoleLoginView role={selectedRole} busy={loading} error={error} onBack={() => setMode('roles')} onRegister={() => { setError(''); setMode('register') }} onSubmit={signIn}/>
   if (mode === 'register' && selectedRole) return <RegistrationView role={selectedRole} departments={departments} adminAccessConfigured={adminAccessConfigured} onBack={() => { setError(''); setMode('role-login') }} onAdminCreated={acceptCreatedAdministrator} onSubmitted={acceptRegistration}/>
-  if (mode === 'registration-status' && registrationStatus) return <RegistrationStatus status={registrationStatus} onBack={() => { setSelectedRole(null); setMode('roles') }}/>
+  if (mode === 'registration-status' && registrationStatus) return <RegistrationStatus status={registrationStatus} onBack={() => { setSelectedRole(null); setMode('roles') }} onPasswordCreated={acceptPasswordSetup}/>
   if (!user) return null
 
   const title = titles[activePage] || 'Overview'
@@ -206,10 +247,10 @@ export default function SecureApp() {
         {activePage === 'overview' && <Dashboard user={user} onNavigate={(page) => applyRoute(page)} onAction={handleAction} adminView={user.role === APP_ROLES.ADMIN}/>}
         {activePage === 'unauthorized' && <AccessNotice onHome={() => applyRoute('overview')} message="Your account doesn’t have permission to open that campus service."/>}
         {activePage === 'not-found' && <AccessNotice onHome={() => applyRoute('overview')} message="That campus page doesn’t exist or is no longer available."/>}
-        {activePage === 'users' && user.role === APP_ROLES.ADMIN && <AdministrationUsers currentUser={user} onNotify={showToast}/>}
+        {activePage === 'users' && user.role === APP_ROLES.ADMIN && <AdministrationUsers currentUser={user} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
         {activePage === 'campus-management' && user.role === APP_ROLES.ADMIN && <CampusManagement onNotify={showToast}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
-        {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} onNotify={showToast}/>}
+        {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
         {titles[activePage] && !['overview', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}

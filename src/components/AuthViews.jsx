@@ -52,6 +52,15 @@ export function RoleLoginView({ role, onBack, onRegister, onSubmit, busy, error 
   </AuthLayout>
 }
 
+export function PasswordCreatedView({ onLogin }) {
+  return <AuthLayout story="Your campus account, ready." storyLine="Your password has been created securely. Sign in to continue to your campus dashboard.">
+    <span className="login-welcome-label">ACCOUNT SECURITY</span>
+    <h2>Password created successfully ✓</h2>
+    <p className="login-description">Your password is saved. Continue to the existing Campus One login page to sign in with your Campus One ID and password.</p>
+    <button type="button" className="login-submit" onClick={onLogin}>Login <ArrowRight size={16}/></button>
+  </AuthLayout>
+}
+
 export function RegistrationView({ role, departments, adminAccessConfigured, onBack, onAdminCreated, onSubmitted, initialStep = 0 }) {
   const [fields, setFields] = useState({ gender: '', department: '', photo: '' })
   const [password, setPassword] = useState('')
@@ -104,12 +113,12 @@ export function RegistrationView({ role, departments, adminAccessConfigured, onB
       setStep((current) => current + 1)
       return
     }
-    if (password.length < 12) { setError('Choose a password with at least 12 characters.'); return }
-    if (password !== confirmation) { setError('Your passwords do not match.'); return }
+    if (admin && password.length < 12) { setError('Choose a password with at least 12 characters.'); return }
+    if (admin && password !== confirmation) { setError('Your passwords do not match.'); return }
     setBusy(true)
     const { confirmation: ignored, ...profile } = fields
     try {
-      const result = await api('/api/registrations', { method: 'POST', body: { ...profile, role, password } })
+      const result = await api('/api/registrations', { method: 'POST', body: { ...profile, role, ...(admin ? { password } : {}) } })
       if (admin) onAdminCreated(result.user)
       else onSubmitted({ application: result.application, requestToken: result.requestToken })
     } catch (reason) { setError(reason.message) } finally { setBusy(false) }
@@ -151,20 +160,22 @@ export function RegistrationView({ role, departments, adminAccessConfigured, onB
     return <>
       <label className="auth-field-wide">MOBILE NUMBER<input name="mobile" autoComplete="tel" inputMode="tel" maxLength={24} value={fields.mobile || ''} onChange={(event) => update('mobile', event.target.value)} required/></label>
       <label className="auth-field-wide">{student || role === APP_ROLES.SPORTS ? 'COLLEGE EMAIL / EMAIL' : 'OFFICIAL EMAIL'}<input name="email" type="email" autoComplete="email" maxLength={254} value={fields.email || ''} onChange={(event) => update('email', event.target.value)} required/></label>
-      <label className="auth-field-wide">PASSWORD<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required/></label>
-      <label className="auth-field-wide">CONFIRM PASSWORD<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required/></label>
-      <p className="auth-password-note auth-field-wide"><LockKeyhole size={12}/> You create this password. Campus One never shares or returns it.</p>
+      {admin && <>
+        <label className="auth-field-wide">PASSWORD<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required/></label>
+        <label className="auth-field-wide">CONFIRM PASSWORD<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required/></label>
+        <p className="auth-password-note auth-field-wide"><LockKeyhole size={12}/> You create this password. Campus One never shares or returns it.</p>
+      </>}
     </>
   }
 
-  const wizardStepNames = admin ? ['ADMIN DETAILS', 'CONTACT & PASSWORD'] : ['PERSONAL DETAILS', student ? 'ENROLLMENT DETAILS' : 'ROLE DETAILS', 'CONTACT & PASSWORD']
+  const wizardStepNames = admin ? ['ADMIN DETAILS', 'CONTACT & PASSWORD'] : ['PERSONAL DETAILS', student ? 'ENROLLMENT DETAILS' : 'ROLE DETAILS', 'CONTACT DETAILS']
   const stepLabel = admin && !adminCodeVerified ? 'ADMINISTRATION ACCESS CODE' : `STEP ${step + 1} OF ${totalSteps} · ${wizardStepNames[step]}`
 
-  return <AuthLayout story={admin ? 'Your campus. Built with care.' : 'Your place in the campus.'} storyLine={admin ? 'Securely establish the first Administration account.' : 'Share your details and set your own private password.'}>
+  return <AuthLayout story={admin ? 'Your campus. Built with care.' : 'Your place in the campus.'} storyLine={admin ? 'Securely establish the first Administration account.' : 'Share your details for secure review by your campus.'}>
     <button className="auth-back-link" onClick={onBack}><ArrowLeft size={14}/> Back to {admin ? 'Administration Login' : `${account.label}`}</button>
     <span className="login-welcome-label">{admin ? 'PROTECTED ADMINISTRATION SETUP' : `${account.label.toUpperCase()} · APPLICATION`}</span>
     <h2>{admin ? 'Register Administration.' : student ? 'Start your student registration.' : 'Request campus access.'}</h2>
-    <p className="login-description">{student ? 'Your department HOD reviews your request. You create your own password.' : admin ? 'Verify the private Administration Access Code before creating your own account.' : 'Administration reviews your request. Set your own password; it will be activated after approval.'}</p>
+    <p className="login-description">{student ? 'Your department HOD reviews your request. After approval, the campus assigns your official ID and you create your own password.' : admin ? 'Verify the private Administration Access Code before creating your own account.' : 'Administration reviews your request. After approval, the campus assigns your official ID and you create your own password.'}</p>
     {admin && !adminAccessConfigured && <span className="login-form-error" role="status">Administration registration is not configured on this server. Ask the campus operator to set its private access-code environment variable.</span>}
     {!(admin && !adminCodeVerified) && <div className="registration-stepper" aria-label={stepLabel}><span>STEP {step + 1} OF {totalSteps}</span><div>{Array.from({ length: totalSteps }, (_, index) => <i className={index <= step ? 'registration-step-active' : ''} key={index}/>)}</div><strong>{wizardStepNames[step]}</strong></div>}
     <form className="login-form auth-registration-form" onSubmit={continueStep}>
@@ -176,13 +187,15 @@ export function RegistrationView({ role, departments, adminAccessConfigured, onB
   </AuthLayout>
 }
 
-export function RegistrationStatus({ status, onBack, onCheck }) {
+export function RegistrationStatus({ status, onBack, onPasswordCreated }) {
   const [requestId, setRequestId] = useState(status.application.id)
   const [requestToken, setRequestToken] = useState(status.requestToken)
   const [result, setResult] = useState(status.application)
   const [notifications, setNotifications] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
 
   useEffect(() => {
     let active = true
@@ -208,6 +221,24 @@ export function RegistrationStatus({ status, onBack, onCheck }) {
     catch (reason) { setError(reason.message) } finally { setBusy(false) }
   }
 
+  async function createPassword(event) {
+    event.preventDefault()
+    setError('')
+    if (newPassword.length < 12 || newPassword.length > 128) { setError('Choose a password between 12 and 128 characters.'); return }
+    if (newPassword !== confirmation) { setError('Your passwords do not match.'); return }
+    setBusy(true)
+    try {
+      const response = await api('/api/registrations/password', {
+        method: 'POST',
+        body: { requestId, requestToken, password: newPassword, confirmPassword: confirmation },
+      })
+      if (response.passwordCreated !== true || response.userId !== result.userId) throw new Error('Password setup could not be confirmed. Check your application status and try again.')
+      setNewPassword('')
+      setConfirmation('')
+      onPasswordCreated(result.role)
+    } catch (reason) { setError(reason.message) } finally { setBusy(false) }
+  }
+
   async function markNotificationRead(notification) {
     setError('')
     try {
@@ -216,11 +247,21 @@ export function RegistrationStatus({ status, onBack, onCheck }) {
     } catch (reason) { setError(reason.message) }
   }
 
-  const accepted = result.status === 'Accepted'
+  const accepted = ['Approved', 'Accepted'].includes(result.status)
+  const passwordSetupRequired = accepted && Boolean(result.userId) && result.passwordSetupAvailable !== false
   return <AuthLayout story="Your campus account, underway." storyLine="Your application is private and reviewed by the right campus team.">
-    <span className="login-welcome-label">APPLICATION STATUS</span><h2>{accepted ? 'Your request is approved.' : result.status === 'Rejected' ? 'Your request was reviewed.' : 'Your request is with campus.'}</h2>
-    <p className="login-description">{accepted && result.userId ? `Your User ID is ${result.userId}. Sign in with the password you created.` : result.status === 'Rejected' ? 'This account cannot sign in. Contact campus administration for next steps.' : `Your ${result.role} request has been sent for review.`}</p>
-    <div className="application-tracker"><span className={`application-status application-${result.status.toLowerCase()}`}><i/>{result.status}</span><span>APPLICATION REFERENCE</span><code>{requestId}</code><span>PRIVATE STATUS TOKEN</span><code>{requestToken}</code><small>Save this reference and token to check your application status later.</small></div>
+    <span className="login-welcome-label">APPLICATION STATUS</span><h2>{accepted ? 'Request Approved ✓' : result.status === 'Rejected' ? 'Your request was reviewed.' : 'Your request is with campus.'}</h2>
+    <p className="login-description">{accepted && result.userId
+      ? passwordSetupRequired ? 'Your request has been approved. Please create your password.' : 'Your password setup period has expired. Contact campus administration for assistance.'
+      : result.status === 'Rejected' ? 'This account cannot sign in. Contact campus administration for next steps.' : `Your ${result.role} request has been sent for review.`}</p>
+    <div className="application-tracker"><span className={`application-status application-${accepted ? 'approved' : result.status.toLowerCase()}`}><i/>{accepted ? 'Approved' : result.status}</span><span>APPLICATION REFERENCE</span><code>{requestId}</code>{accepted && result.userId && <><span>YOUR CAMPUS ONE ID</span><code>{result.userId}</code></>}<span>PRIVATE STATUS TOKEN</span><code>{requestToken}</code><small>Keep this private reference and token to reopen your application status and password setup.</small></div>
+    {passwordSetupRequired && <form className="login-form setup-form" onSubmit={createPassword}>
+      <label htmlFor="create-account-password">CREATE YOUR PASSWORD</label>
+      <span className="login-input"><LockKeyhole size={15}/><input id="create-account-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required/></span>
+      <label htmlFor="confirm-account-password">CONFIRM PASSWORD</label>
+      <span className="login-input"><LockKeyhole size={15}/><input id="confirm-account-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required/></span>
+      <button className="login-submit" disabled={busy}>{busy ? 'Creating your password…' : 'Create Password'} {!busy && <Check size={15}/>}</button>
+    </form>}
     {notifications.length > 0 && <section className="application-notifications"><span className="section-eyebrow">CAMPUS NOTIFICATIONS</span>{notifications.map((notification) => <article key={notification.id}><strong>{notification.title}</strong><span>{notification.message}</span><small>{new Date(notification.createdAt).toLocaleString()}</small>{!notification.readAt && <button type="button" onClick={() => markNotificationRead(notification)}>Mark as read</button>}</article>)}</section>}
     <button className="login-submit application-refresh" onClick={checkStatus} disabled={busy}>{busy ? 'Checking…' : 'Check application status'} {!busy && <Check size={15}/>}</button>
     {error && <span className="login-form-error" role="alert">{error}</span>}

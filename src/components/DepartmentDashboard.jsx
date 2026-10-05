@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, GraduationCap, RefreshCw, UserRound, UsersRound, X } from 'lucide-react'
 import { api } from '../api/client'
+import ApprovalRequestDetails from './ApprovalRequestDetails.jsx'
 
-export default function DepartmentDashboard({ user, page, onNotify }) {
+export default function DepartmentDashboard({ user, page, requestId, onClearRequest, onNotify }) {
   const [records, setRecords] = useState([])
+  const [selectedRequest, setSelectedRequest] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState('')
@@ -14,9 +16,18 @@ export default function DepartmentDashboard({ user, page, onNotify }) {
     try {
       const endpoint = page === 'department-requests' ? '/api/hod/requests' : '/api/hod/students'
       const result = await api(endpoint)
-      setRecords(page === 'department-requests' ? result.requests : result.students)
+      const nextRecords = page === 'department-requests' ? result.requests : result.students
+      setRecords(nextRecords)
+      if (page === 'department-requests' && requestId) {
+        const matchedRequest = nextRecords.find((item) => item.id === requestId)
+        if (matchedRequest) setSelectedRequest(matchedRequest)
+        else {
+          const detail = await api(`/api/hod/requests/${encodeURIComponent(requestId)}`)
+          setSelectedRequest(detail.request)
+        }
+      }
     } catch (reason) { setError(reason.message) } finally { setLoading(false) }
-  }, [page])
+  }, [page, requestId])
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -26,13 +37,23 @@ export default function DepartmentDashboard({ user, page, onNotify }) {
     try {
       const result = await api(`/api/hod/requests/${encodeURIComponent(application.id)}`, { method: 'PATCH', body: { status } })
       setRecords((current) => current.filter((item) => item.id !== application.id))
+      setSelectedRequest((current) => current?.id === application.id ? result.application : current)
       onNotify(status === 'Accepted'
-        ? `${application.name} accepted · new student ID ${result.userId}`
+        ? `${application.name} approved · new student ID ${result.userId}. The applicant can now create a password.`
         : `${application.name}’s registration was rejected.`)
     } catch (reason) { setError(reason.message) } finally { setBusyId('') }
   }
 
   const requestView = page === 'department-requests'
+
+  function closeRequestDetails() {
+    setSelectedRequest(null)
+    onClearRequest()
+    const params = new URLSearchParams(window.location.search)
+    params.delete('request')
+    const suffix = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${suffix ? `?${suffix}` : ''}`)
+  }
 
   return <div className="module-page page-enter management-page department-page">
     <div className="module-breadcrumb">DEPARTMENT <span>›</span> {user.department.toUpperCase()}</div>
@@ -40,8 +61,9 @@ export default function DepartmentDashboard({ user, page, onNotify }) {
     <section className="module-stats"><div className="module-stat"><span className="module-stat-icon"><UsersRound size={15}/></span><span><span>Assigned department</span><strong>{user.department}</strong></span></div><div className="module-stat"><span className="module-stat-icon"><UserRound size={15}/></span><span><span>{requestView ? 'Pending student requests' : 'Department students'}</span><strong>{records.length} {requestView ? 'to review' : 'students'}</strong></span></div><div className="module-stat"><span className="module-stat-icon"><Check size={15}/></span><span><span>HOD access</span><strong>Department restricted</strong></span></div></section>
     {error && <div className="management-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss"><X size={14}/></button></div>}
     <section className="management-section"><div className="management-heading"><div><span className="section-eyebrow">{user.department.toUpperCase()}</span><h2>{requestView ? 'Student applications' : 'Enrolled students'}</h2></div><span className="results-count">{records.length} {requestView ? 'requests' : 'students'}</span></div>
-      {loading ? <div className="management-state"><span className="loading-spinner"/>Loading department records…</div> : records.length === 0 ? <div className="management-state">{requestView ? 'No student registration requests are awaiting review.' : 'There are no enrolled students in this department yet.'}</div> : <div className="department-table-wrap"><table className="user-table department-table"><thead><tr>{requestView ? <><th>STUDENT</th><th>ROLL / ENROLLMENT</th><th>COURSE</th><th>SEMESTER</th><th>ADMISSION YEAR</th><th>CONTACT</th><th>SUBMITTED</th><th>DECISION</th></> : <><th>STUDENT</th><th>USER ID</th><th>ROLL / ENROLLMENT</th><th>COURSE</th><th>SEMESTER</th><th>ADMISSION YEAR</th><th>STATUS</th></>}</tr></thead><tbody>{records.map((record) => <tr key={record.id}><td><span className="user-cell"><span className="user-initials">{initials(record.name)}</span><span><strong>{record.name}</strong><small>{record.department}</small></span></span></td>{requestView ? <><td>{record.rollNumber}</td><td>{record.course}</td><td>{record.semester}</td><td>{record.admissionYear}</td><td><span className="department-contact"><span>{record.mobile}</span><span>{record.email}</span></span></td><td>{new Date(record.createdAt).toLocaleDateString()}</td><td><span className="department-review-actions"><button className="review-accept" disabled={busyId === record.id} onClick={() => review(record, 'Accepted')}><Check size={13}/> Accept</button><button className="review-reject" disabled={busyId === record.id} onClick={() => review(record, 'Rejected')}><X size={13}/> Reject</button></span></td></> : <><td><code className="user-id-tag">{record.id}</code></td><td>{record.rollNumber}</td><td>{record.course}</td><td>{record.semester}</td><td>{record.admissionYear}</td><td><span className={`account-status ${record.active ? 'status-active' : 'status-inactive'}`}><i/>{record.active ? 'Active' : 'Inactive'}</span></td></>}</tr>)}</tbody></table></div>}
+      {loading ? <div className="management-state"><span className="loading-spinner"/>Loading department records…</div> : records.length === 0 ? <div className="management-state">{requestView ? 'No student registration requests are awaiting review.' : 'There are no enrolled students in this department yet.'}</div> : <div className="department-table-wrap"><table className="user-table department-table"><thead><tr>{requestView ? <><th>STUDENT</th><th>ROLL / ENROLLMENT</th><th>COURSE</th><th>SEMESTER</th><th>ADMISSION YEAR</th><th>CONTACT</th><th>SUBMITTED</th><th>DECISION</th></> : <><th>STUDENT</th><th>USER ID</th><th>ROLL / ENROLLMENT</th><th>COURSE</th><th>SEMESTER</th><th>ADMISSION YEAR</th><th>STATUS</th></>}</tr></thead><tbody>{records.map((record) => <tr key={record.id}><td><span className="user-cell"><span className="user-initials">{initials(record.name)}</span><span><strong>{record.name}</strong><small>{record.department}</small>{requestView && <button className="request-view-button" onClick={() => setSelectedRequest(record)}>View Request</button>}</span></span></td>{requestView ? <><td>{record.rollNumber}</td><td>{record.course}</td><td>{record.semester}</td><td>{record.admissionYear}</td><td><span className="department-contact"><span>{record.mobile}</span><span>{record.email}</span></span></td><td>{new Date(record.createdAt).toLocaleDateString()}</td><td><span className="department-review-actions"><button className="review-accept" disabled={busyId === record.id} onClick={() => review(record, 'Accepted')}><Check size={13}/>{busyId === record.id ? 'Accepting…' : 'ACCEPT'}</button><button className="review-reject" disabled={busyId === record.id} onClick={() => review(record, 'Rejected')}><X size={13}/>{busyId === record.id ? 'Rejecting…' : 'REJECT'}</button></span></td></> : <><td><code className="user-id-tag">{record.id}</code></td><td>{record.rollNumber}</td><td>{record.course}</td><td>{record.semester}</td><td>{record.admissionYear}</td><td><span className={`account-status ${record.active ? 'status-active' : 'status-inactive'}`}><i/>{record.active ? 'Active' : 'Inactive'}</span></td></>}</tr>)}</tbody></table></div>}
     </section>
+    {requestView && selectedRequest && <ApprovalRequestDetails request={selectedRequest} busy={busyId === selectedRequest.id} error={error} onClose={closeRequestDetails} onReview={(status) => review(selectedRequest, status)}/>}
     <footer className="dashboard-footer"><span><span className="footer-status-dot"/>Department data protected by server-side access checks</span><span>{user.role} · {user.id}</span></footer>
   </div>
 }

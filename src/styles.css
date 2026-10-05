@@ -713,6 +713,15 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .user-action:hover { color: #4f6a4c; background: #f1f4ed; border-color: #e6ebe1; }
 .deactivate-action:hover { color: #a35a4b; background: #f8efeb; border-color: #f1e6e1; }
 .activate-action:hover { color: #527550; }
+.delete-user-action { color: #a35a4b; }
+.delete-user-action:hover { color: #9b3025; background: #faece8; border-color: #f1d6cf; }
+.user-action:disabled { opacity: .45; cursor: wait; }
+.account-actions-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.user-action-label { min-height: 27px; padding: 0 6px; color: #687764; font-size: 8px; white-space: nowrap; background: #fff; border: 1px solid #e6ebe1; border-radius: 2px; cursor: pointer; }
+.user-action-label:hover { color: #4f6a4c; background: #f1f4ed; }
+.user-action-label.account-delete-action { color: #9b493d; border-color: #f1e1dc; }
+.user-action-label.account-delete-action:hover { background: #faece8; }
+.user-action-label:disabled { opacity: .5; cursor: wait; }
 .management-alert { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 9px 0; padding: 9px 10px; color: #965643; font-size: 9px; line-height: 1.6; background: #f8efeb; border: 1px solid #f1e5de; border-radius: 2px; }
 .management-alert > button { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; color: inherit; background: transparent; border: 0; cursor: pointer; }
 .management-state { display: flex; min-height: 94px; align-items: center; justify-content: center; gap: 9px; color: #818b7f; font-size: 10px; background: white; border: 1px solid #e9ece6; border-radius: 3px; }
@@ -804,6 +813,7 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .application-status { display: inline-flex; width: fit-content; align-items: center; gap: 5px; padding: 4px 6px; color: #8b744e; font-size: 8px; font-weight: 600; background: #f6f0e4; border-radius: 2px; }
 .application-status > i { width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
 .application-accepted { color: #5b7959; background: #eef3e9; }
+.application-approved { color: #5b7959; background: #eef3e9; }
 .application-rejected { color: #a35d4e; background: #f8efea; }
 .application-refresh { width: 100%; }
 .registration-stepper { display: flex; flex-direction: column; gap: 6px; margin: 13px 0 10px; }
@@ -858,6 +868,17 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .department-page .department-table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e8ebe5; border-radius: 3px; }
 .department-table { min-width: 940px; }
 .department-contact { display: flex; flex-direction: column; gap: 3px; color: #687467; font-size: 8px; }
+.approval-request-dialog { width: min(620px, calc(100vw - 28px)); max-height: min(82svh, 760px); overflow-y: auto; }
+.approval-request-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 11px 0; color: #858d82; font-size: 9px; }
+.approval-request-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px 14px; margin: 0; padding: 11px; background: #f8f9f6; border: 1px solid #e9ece6; }
+.approval-request-fields > div { min-width: 0; padding: 7px 0; border-bottom: 1px solid #e9ece6; }
+.approval-request-fields dt { color: #899184; font-size: 8px; font-weight: 700; letter-spacing: .45px; text-transform: uppercase; }
+.approval-request-fields dd { margin: 4px 0 0; color: #465345; font-size: 10px; overflow-wrap: anywhere; }
+.approval-request-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
+.approval-request-actions > button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 0 12px; font-size: 9px; border-radius: 2px; cursor: pointer; }
+.approval-request-actions > button:disabled, .department-review-actions > button:disabled { opacity: .55; cursor: wait; }
+.request-view-button { align-self: flex-start; padding: 2px 0; color: #61785b; font-size: 8px; font-weight: 700; background: none; border: 0; cursor: pointer; }
+.request-view-button:hover { text-decoration: underline; }
 .food-order-panel { display: flex; max-width: 720px; flex-direction: column; gap: 8px; margin-top: 15px; padding: 15px; background: #fff; border: 1px solid #e9ece6; border-radius: 3px; }
 .food-order-panel h2, .student-orders-section h2 { margin: 3px 0 2px; color: #384339; font-family: var(--serif); font-size: 14px; font-weight: 700; }
 .food-order-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: end; gap: 9px; }

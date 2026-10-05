@@ -150,7 +150,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       Object.assign(fields, { designation })
     }
 
-    if (!validatePassword(input.password)) throw Object.assign(new Error('Choose a password with at least 12 characters.'), { status: 400 })
+    if (input.role === ROLES.ADMIN && !validatePassword(input.password)) throw Object.assign(new Error('Choose a password with at least 12 characters.'), { status: 400 })
     return fields
   }
 
@@ -188,16 +188,16 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     return createHmac('sha256', secret).update(token).digest('hex')
   }
 
-  function createApprovedUser(application, data) {
+  function createApprovedUser(application, data, { credentials = application.credentials, mustChangePassword = false } = {}) {
     const user = {
       ...application.fields,
       id: userIdForRole(application.role, data),
       role: application.role,
-      active: true,
+      active: Boolean(credentials),
       modules: [],
-      credentials: application.credentials,
+      credentials,
       sessionVersion: 1,
-      mustChangePassword: false,
+      mustChangePassword,
       registrationRequestId: application.id,
       createdAt: new Date().toISOString(),
     }
@@ -318,7 +318,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         if (typeof adminAccessCode !== 'string' || adminAccessCode.length < 5) return reject(response, 503, 'Administration registration is not configured. Contact the Campus One administrator.')
         if (!secretMatches(input.accessCode, adminAccessCode)) return reject(response, 403, 'The Administration Access Code is incorrect.')
       }
-      const credentials = await hashPassword(input.password)
+      const credentials = role === ROLES.ADMIN ? await hashPassword(input.password) : null
       const requestToken = role === ROLES.ADMIN ? '' : randomBytes(32).toString('base64url')
       const result = await store.transact((data) => {
         assertRegistrationUnique(data, fields)
@@ -327,7 +327,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         }
         data.registrationRequests ??= []
         const application = {
-          id: randomUUID(), role, fields, credentials, status: 'Pending',
+          id: randomUUID(), role, fields, status: 'Pending',
           statusTokenHash: applicationTokenHash(requestToken, sessionSecret),
           assignedUserId: '', createdAt: new Date().toISOString(),
         }
@@ -359,9 +359,63 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           submittedAt: application.createdAt,
           reviewedAt: application.reviewedAt || null,
           userId: application.assignedUserId || null,
+          passwordSetupAvailable: application.status === 'Approved'
+            && Boolean(application.assignedUserId)
+            && Boolean(application.statusTokenHash)
+            && Date.parse(application.setupTokenExpiresAt || '') > Date.now(),
         },
         notifications: (data.notifications || []).filter((notification) => notification.recipientRequestId === application.id).map(publicNotification),
       })
+    }
+
+    if (pathname === '/api/registrations/password' && request.method === 'POST') {
+      const input = await body(request)
+      const requestId = safeText(input.requestId, 64)
+      const token = safeText(input.requestToken, 128)
+      if (!requestId || token.length < 32) return reject(response, 400, 'Your application reference and setup token are required.')
+      if (!validatePassword(input.password)) return reject(response, 400, 'Choose a password with at least 12 characters.')
+      if (input.password !== input.confirmPassword) return reject(response, 400, 'Your passwords do not match.')
+      const current = await store.read()
+      const application = (current.registrationRequests || []).find((candidate) => candidate.id === requestId)
+      const currentUser = application?.assignedUserId
+        ? current.users.find((candidate) => candidate.id === application.assignedUserId && candidate.registrationRequestId === application.id)
+        : null
+      if (!application
+        || application.status !== 'Approved'
+        || !application.statusTokenHash
+        || !secretMatches(application.statusTokenHash, applicationTokenHash(token, sessionSecret))) {
+        return reject(response, 404, 'This approved account setup could not be verified.')
+      }
+      if (!Number.isFinite(Date.parse(application.setupTokenExpiresAt || '')) || Date.parse(application.setupTokenExpiresAt) <= Date.now()) {
+        return reject(response, 410, 'This password setup link has expired. Contact campus administration for assistance.')
+      }
+      if (!currentUser || currentUser.active || currentUser.credentials) return reject(response, 409, 'This account has already completed password setup or is unavailable.')
+      const credentials = await hashPassword(input.password)
+      const setup = await store.transact((data) => {
+        const application = (data.registrationRequests || []).find((candidate) => candidate.id === requestId)
+        const now = Date.now()
+        if (!application
+          || application.status !== 'Approved'
+          || !application.assignedUserId
+          || !application.statusTokenHash
+          || !secretMatches(application.statusTokenHash, applicationTokenHash(token, sessionSecret))) {
+          throw Object.assign(new Error('This approved account setup could not be verified.'), { status: 404 })
+        }
+        if (!Number.isFinite(Date.parse(application.setupTokenExpiresAt || '')) || Date.parse(application.setupTokenExpiresAt) <= now) {
+          throw Object.assign(new Error('This password setup link has expired. Contact campus administration for assistance.'), { status: 410 })
+        }
+        const user = data.users.find((candidate) => candidate.id === application.assignedUserId && candidate.registrationRequestId === application.id)
+        if (!user || user.active || user.credentials) throw Object.assign(new Error('This account has already completed password setup or is unavailable.'), { status: 409 })
+        user.credentials = credentials
+        user.active = true
+        user.mustChangePassword = false
+        user.sessionVersion += 1
+        user.passwordSetupCompletedAt = new Date().toISOString()
+        application.statusTokenHash = null
+        application.setupTokenExpiresAt = null
+        return { userId: user.id, role: user.role }
+      })
+      return json(response, 200, { passwordCreated: true, ...setup })
     }
 
     if (pathname === '/api/registrations/notifications/read' && request.method === 'POST') {
@@ -396,30 +450,37 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         const requests = data.registrationRequests.filter((application) => application.role === ROLES.STUDENT && application.status === 'Pending' && application.fields.department === user.department)
         return json(response, 200, { department: user.department, requests: requests.map(publicRegistration) })
       }
+      if (hodQueue[1] === 'requests' && hodQueue[2] && request.method === 'GET') {
+        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && candidate.fields.department === user.department)
+        if (!application) return reject(response, 404, 'This student request is not in your department.')
+        return json(response, 200, { request: publicRegistration(application) })
+      }
       if (hodQueue[1] === 'requests' && hodQueue[2] && request.method === 'PATCH') {
         const input = await body(request)
         if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Accept or Reject.')
-        const result = await store.transact((current) => {
+        const result = await store.transact(async (current) => {
           const application = current.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]))
           if (!application || application.role !== ROLES.STUDENT || application.fields.department !== user.department) throw Object.assign(new Error('This student request is not in your department.'), { status: 404 })
           if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
-          application.status = input.status
+          application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
           application.reviewedAt = new Date().toISOString()
           if (input.status === 'Accepted') {
-            const student = createApprovedUser(application, current)
+            const student = createApprovedUser(application, current, { credentials: null })
             application.assignedUserId = student.id
             application.credentials = null
+            application.setupTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
             addNotification(current, {
               recipientUserId: student.id,
               recipientRequestId: application.id,
               title: 'Student registration approved',
-              message: `Your account is active. Your Student ID is ${student.id}. You can now sign in.`,
+              message: `Your request has been approved. Your Student ID is ${student.id}. Create your password from your application status page within seven days.`,
               referenceId: application.id,
               target: 'login',
             })
             return { application: publicRegistration(application), userId: student.id }
           }
           application.credentials = null
+          application.setupTokenExpiresAt = null
           addNotification(current, {
             recipientRequestId: application.id,
             title: 'Student registration rejected',
@@ -429,7 +490,14 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           })
           return { application: publicRegistration(application), userId: null }
         })
-        return json(response, 200, result)
+        return json(response, 200, {
+          application: {
+            ...result.application,
+            userId: result.userId,
+            passwordSetupAvailable: Boolean(result.userId),
+          },
+          userId: result.userId,
+        })
       }
       return reject(response, 404, 'Department route not found.')
     }
@@ -439,7 +507,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!user) return reject(response, 401, 'Sign in to continue.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
       const data = await store.read()
-      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(application.role) && ['Pending', 'Accepted', 'Rejected'].includes(application.status))
+      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(application.role) && ['Pending', 'Approved', 'Accepted', 'Rejected'].includes(application.status))
       return json(response, 200, { requests: requests.map(publicRegistration) })
     }
 
@@ -450,28 +518,30 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
       const input = await body(request)
       if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Allow/Accept or Reject.')
-      const result = await store.transact((data) => {
+      const result = await store.transact(async (data) => {
         const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(adminRequest[1]))
         if (!application || ![ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(application.role)) throw Object.assign(new Error('This Administration request was not found.'), { status: 404 })
         if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
-        application.status = input.status
+        application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
         application.reviewedAt = new Date().toISOString()
         if (input.status === 'Accepted') {
-          const approved = createApprovedUser(application, data)
+          const approved = createApprovedUser(application, data, { credentials: null })
           application.assignedUserId = approved.id
           application.credentials = null
+          application.setupTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
           notifyPendingDepartmentRequests(data, approved)
           addNotification(data, {
             recipientUserId: approved.id,
             recipientRequestId: application.id,
             title: `${application.role} access approved`,
-            message: `Your account is active. Your User ID is ${approved.id}. You can now sign in.`,
+            message: `Your request has been approved. Your User ID is ${approved.id}. Create your password from your application status page within seven days.`,
             referenceId: application.id,
             target: 'login',
           })
           return { request: publicRegistration(application), userId: approved.id }
         }
         application.credentials = null
+        application.setupTokenExpiresAt = null
         addNotification(data, {
           recipientRequestId: application.id,
           title: `${application.role} access rejected`,
@@ -481,7 +551,14 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         })
         return { request: publicRegistration(application), userId: null }
       })
-      return json(response, 200, result)
+      return json(response, 200, {
+        request: {
+          ...result.request,
+          userId: result.userId,
+          passwordSetupAvailable: Boolean(result.userId),
+        },
+        userId: result.userId,
+      })
     }
 
     if (pathname === '/api/auth/login' && request.method === 'POST') {
@@ -511,6 +588,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const user = await authenticatedUser(request)
     if (!user) return reject(response, 401, 'Sign in to continue.')
+    if (user.mustChangePassword && !(
+      (pathname === '/api/auth/me' && request.method === 'GET')
+      || (pathname === '/api/auth/password' && request.method === 'POST')
+      || (pathname === '/api/auth/logout' && request.method === 'POST')
+    )) return reject(response, 403, 'Change your temporary password before continuing.')
 
     if (pathname === '/api/notifications' && request.method === 'GET') {
       const data = await store.read()
@@ -637,12 +719,32 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         }
         if (input.active !== undefined) {
           if (typeof input.active !== 'boolean') throw Object.assign(new Error('Account status must be active or inactive.'), { status: 400 })
+          if (input.active && !target.credentials) throw Object.assign(new Error('This account must complete its own password setup before it can be activated.'), { status: 400 })
           target.active = input.active
           if (!target.active) target.sessionVersion += 1
         }
         return target
       })
       return json(response, 200, { user: publicUser(updated) })
+    }
+
+    if (userRoute && !userRoute[2] && request.method === 'DELETE') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
+      const targetId = decodeURIComponent(userRoute[1])
+      const deleted = await store.transact((data) => {
+        const targetIndex = data.users.findIndex((candidate) => candidate.id === targetId)
+        if (targetIndex < 0) throw Object.assign(new Error('User not found.'), { status: 404 })
+        const target = data.users[targetIndex]
+        if (target.id === user.id) throw Object.assign(new Error('You cannot permanently delete your own Administration account.'), { status: 400 })
+        if (target.role === ROLES.ADMIN && target.active && data.users.filter((candidate) => candidate.role === ROLES.ADMIN && candidate.active).length <= 1) {
+          throw Object.assign(new Error('At least one active Administration account must remain.'), { status: 400 })
+        }
+        data.issuedUserIds ??= []
+        if (!data.issuedUserIds.includes(target.id)) data.issuedUserIds.push(target.id)
+        data.users.splice(targetIndex, 1)
+        return { id: target.id }
+      })
+      return json(response, 200, { deleted: true, userId: deleted.id })
     }
 
     if (userRoute && userRoute[2] === 'reset-password') return reject(response, 410, 'Users change their own password through their campus account.')
