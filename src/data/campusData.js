@@ -4,8 +4,9 @@ export const navigationGroups = [
     items: [
       { id: 'overview', label: 'Overview', icon: 'LayoutDashboard' },
       { id: 'copilot', label: 'AI Copilot', icon: 'Sparkles', badge: 'AI' },
-      { id: 'notices', label: 'Notice board', icon: 'Megaphone', badge: '3' },
+      { id: 'notices', label: 'Notices & Announcements', icon: 'Megaphone' },
       { id: 'food', label: 'Food & dining', icon: 'Utensils' },
+      { id: 'canteen', label: 'Canteen', icon: 'Utensils' },
       { id: 'navigation', label: 'Campus map', icon: 'Map' },
     ],
   },

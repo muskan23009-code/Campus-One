@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, Check,
-  GraduationCap, KeyRound, LockKeyhole, ShieldCheck, Trophy,
+  GraduationCap, KeyRound, LockKeyhole, ShieldCheck, Trophy, Utensils,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { APP_ROLES, LOGIN_ROLES } from '../auth/access'
 
-const ROLE_ICONS = { GraduationCap, BriefcaseBusiness, Building2, ShieldCheck, Trophy }
+const ROLE_ICONS = { GraduationCap, BriefcaseBusiness, Building2, ShieldCheck, Trophy, Utensils }
 const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say']
 
 export function RoleChooser({ onChoose }) {
@@ -153,13 +153,14 @@ export function RegistrationView({ role, departments, adminAccessConfigured, onB
       <label>SPORT<input name="sport" maxLength={80} value={fields.sport || ''} onChange={(event) => update('sport', event.target.value)} required/></label>
       <label>TEAM / CATEGORY<input name="teamCategory" maxLength={100} value={fields.teamCategory || ''} onChange={(event) => update('teamCategory', event.target.value)} required/></label>
     </>
+    if (role === APP_ROLES.CANTEEN) return <p className="auth-password-note auth-field-wide">Administration reviews your Canteen Staff request. After approval, you will create your own password.</p>
     return null
   }
 
   function contactFields() {
     return <>
       <label className="auth-field-wide">MOBILE NUMBER<input name="mobile" autoComplete="tel" inputMode="tel" maxLength={24} value={fields.mobile || ''} onChange={(event) => update('mobile', event.target.value)} required/></label>
-      <label className="auth-field-wide">{student || role === APP_ROLES.SPORTS ? 'COLLEGE EMAIL / EMAIL' : 'OFFICIAL EMAIL'}<input name="email" type="email" autoComplete="email" maxLength={254} value={fields.email || ''} onChange={(event) => update('email', event.target.value)} required/></label>
+      <label className="auth-field-wide">{student || role === APP_ROLES.SPORTS || role === APP_ROLES.CANTEEN ? 'COLLEGE EMAIL / EMAIL' : 'OFFICIAL EMAIL'}<input name="email" type="email" autoComplete="email" maxLength={254} value={fields.email || ''} onChange={(event) => update('email', event.target.value)} required/></label>
       {admin && <>
         <label className="auth-field-wide">PASSWORD<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required/></label>
         <label className="auth-field-wide">CONFIRM PASSWORD<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required/></label>
@@ -274,5 +275,5 @@ function AuthLayout({ children, story, storyLine }) {
 }
 
 function idExample(role) {
-  return { Student: 'e.g. PM-S1001', Staff: 'e.g. PM-ST001', HOD: 'e.g. PM-HOD001', 'Sports Captain': 'e.g. PM-SC001', Administration: 'e.g. PM-AD001' }[role]
+  return { Student: 'e.g. PM-S1001', Staff: 'e.g. PM-ST001', HOD: 'e.g. PM-HOD001', 'Sports Captain': 'e.g. PM-SC001', 'Canteen Staff': 'e.g. PM-CS001', Administration: 'e.g. PM-AD001' }[role]
 }

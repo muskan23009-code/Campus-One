@@ -13,8 +13,11 @@ import PasswordChangeView from './components/PasswordChangeView.jsx'
 import ProfileDialog from './components/ProfileDialog.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import SportsManagement from './components/SportsManagement.jsx'
+import StudentSports from './components/StudentSports.jsx'
 import TopBar from './components/TopBar.jsx'
 import AdministrationUsers from './components/AdministrationUsers.jsx'
+import Canteen from './components/Canteen.jsx'
+import NoticeBoard from './components/NoticeBoard.jsx'
 import { navigationGroups } from './data/campusData'
 
 const titles = Object.fromEntries(navigationGroups.flatMap((group) => group.items.map((item) => [item.id, item.label])))
@@ -22,6 +25,7 @@ titles.profile = 'My account'
 titles['campus-management'] = 'Campus management'
 titles['sports-management'] = 'Sports management'
 titles.users = 'User management'
+titles.canteen = 'Canteen'
 titles['department-requests'] = 'Student registration requests'
 titles['department-students'] = 'Department students'
 titles.unauthorized = 'Access denied'
@@ -167,9 +171,8 @@ export default function SecureApp() {
   async function signIn(credentials) {
     setLoading(true)
     setError('')
-    setLoginSuccess('')
     try {
-      const result = await api('/api/auth/login', { method: 'POST', body: { ...credentials, role: selectedRole } })
+      const result = await api('/api/auth/login', { method: 'POST', body: { ...credentials, role: selectedRole }, timeoutMs: 15000 })
       setUser(result.user)
       setMode('authenticated')
       setSetupRequired(false)
@@ -226,6 +229,7 @@ export default function SecureApp() {
   if (!user) return null
 
   const title = titles[activePage] || 'Overview'
+  if (!user.mustChangePassword && user.role === APP_ROLES.CANTEEN) return <div className="app-shell canteen-staff-shell"><Canteen user={user} onNotify={showToast} onLogout={signOut}/>{error && <div className="toast-notice toast-error"><span className="toast-icon"><ShieldAlert size={14}/></span><span>{error}</span><button aria-label="Dismiss notification" onClick={() => setError('')}><X size={14}/></button></div>}{toast && <div className="toast-notice"><span className="toast-icon"><Check size={14}/></span><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14}/></button></div>}</div>
 
   return <div className="app-shell">
     {!user.mustChangePassword && <>
@@ -239,9 +243,12 @@ export default function SecureApp() {
         {activePage === 'campus-management' && user.role === APP_ROLES.ADMIN && <CampusManagement onNotify={showToast}/>}
         {activePage === 'complaints' && <ComplaintCenter user={user} initialComplaintId={requestReference} onNotify={showToast}/>}
         {activePage === 'lost-found' && <LostFoundCenter user={user} initialReportId={requestReference} onNotify={showToast}/>}
+        {activePage === 'notices' && user.role !== APP_ROLES.CANTEEN && <NoticeBoard user={user} onNotify={showToast}/>}
+        {activePage === 'canteen' && <Canteen user={user} onNotify={showToast}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
+        {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-        {titles[activePage] && !['overview', 'complaints', 'lost-found', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'canteen', 'sports', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}

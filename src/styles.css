@@ -928,11 +928,124 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .lost-found-claim-actions, .lost-found-manager-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .lost-found-claim-actions { flex: 1 1 100%; }
 .lost-found-manager-actions { margin-top: 13px; padding-top: 12px; border-top: 1px solid #eceee8; }
+.canteen-page { padding-bottom: 25px; }
+.canteen-hero { align-items: center; }
+.canteen-signout { min-height: 33px; padding: 0 11px; color: #61775c; font-size: 9px; background: #fff; border: 1px solid #e6ebe2; border-radius: 2px; cursor: pointer; }
+.canteen-tabs { display: flex; gap: 6px; margin: 4px 0 15px; border-bottom: 1px solid #e8ebe5; }
+.canteen-tabs > button { display: flex; min-height: 37px; align-items: center; gap: 6px; padding: 0 10px; color: #7d887b; font-size: 9px; background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.canteen-tabs > button.canteen-tab-active { color: #456849; border-bottom-color: #6c8a65; }
+.canteen-tabs > button > span { display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; color: #63785f; font-size: 8px; background: #eef2e9; border-radius: 10px; }
+.canteen-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.canteen-search { min-width: 180px; flex: 1 1 220px; margin: 0; }
+.canteen-diet-filters { display: flex; gap: 4px; }
+.canteen-diet-filters > button { min-height: 32px; padding: 0 9px; color: #738071; font-size: 9px; background: #fff; border: 1px solid #e8ece5; border-radius: 2px; cursor: pointer; }
+.canteen-diet-filters > button.canteen-filter-active { color: #446649; background: #eef3eb; border-color: #dce6d8; }
+.canteen-filters > select, .canteen-section-heading > select { min-height: 33px; padding: 0 8px; color: #566455; font-size: 9px; background: #fff; border: 1px solid #e7ebe4; border-radius: 2px; }
+.canteen-food-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 11px; }
+.canteen-food-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #e9ece6; border-radius: 3px; }
+.canteen-food-image { display: grid; width: 100%; height: 115px; place-items: center; object-fit: cover; color: #83917a; background: linear-gradient(135deg,#f1f3eb,#e9eee4); }
+.canteen-food-card-body { padding: 11px; }
+.canteen-card-tags { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; }
+.canteen-diet-tag, .canteen-available-tag, .canteen-unavailable-tag { display: inline-flex; align-items: center; gap: 4px; color: #637a5c; font-size: 8px; font-weight: 600; }
+.canteen-diet-tag > i { width: 8px; height: 8px; border: 1px solid currentColor; border-radius: 2px; }
+.diet-veg > i { background: #648b55; }
+.diet-nonveg { color: #a46453; }
+.diet-nonveg > i { background: #ad6953; }
+.canteen-available-tag { color: #66825d; }
+.canteen-unavailable-tag { color: #a35f51; }
+.canteen-food-card h3 { min-height: 31px; margin: 9px 0 3px; color: #414d42; font-size: 11px; font-weight: 650; line-height: 1.45; }
+.canteen-food-card h3 > small { color: #879083; font-size: 9px; font-weight: 500; }
+.canteen-food-category { color: #929a8e; font-size: 8px; }
+.canteen-food-card-body > p { margin: 7px 0 0; color: #788375; font-size: 9px; line-height: 1.5; }
+.canteen-food-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #eff0ed; }
+.canteen-food-card-footer > strong { color: #384b3b; font-size: 13px; }
+.canteen-food-card-footer .module-primary { min-height: 29px; }
+.canteen-edit-button { min-height: 28px; padding: 0 8px; color: #567350; font-size: 8px; background: #f5f7f2; border: 1px solid #e7ebe3; border-radius: 2px; cursor: pointer; }
+.canteen-unavailable { opacity: .78; }
+.canteen-cart, .canteen-orders-section { margin-top: 20px; padding: 15px; background: #fff; border: 1px solid #e9ece6; border-radius: 3px; }
+.canteen-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.canteen-section-heading h2 { margin: 4px 0 0; color: #384339; font-family: var(--serif); font-size: 15px; }
+.canteen-section-heading h2 > span { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 4px; color: #66805e; font: 8px 'DM Sans',sans-serif; vertical-align: middle; background: #eef2e9; border-radius: 50%; }
+.canteen-cart-total { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; color: #879084; font-size: 8px; font-weight: 500; }
+.canteen-cart-total b { color: #3e5542; font-size: 15px; }
+.canteen-empty-cart { margin: 4px 0 0; padding: 14px 0 2px; color: #8a9387; font-size: 9px; }
+.canteen-cart-lines { border-top: 1px solid #eff0ed; }
+.canteen-cart-line { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid #eff0ed; }
+.canteen-cart-line > span { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
+.canteen-cart-line > span > strong { color: #49564a; font-size: 9px; }
+.canteen-cart-line > span > small { color: #92998e; font-size: 8px; }
+.canteen-quantity { display: flex; align-items: center; gap: 8px; }
+.canteen-quantity > button, .canteen-remove { display: grid; width: 25px; height: 25px; place-items: center; color: #60765b; background: #f7f8f4; border: 1px solid #e8ece4; border-radius: 2px; cursor: pointer; }
+.canteen-quantity > strong { min-width: 12px; color: #475346; font-size: 9px; text-align: center; }
+.canteen-remove { color: #a16a5e; background: transparent; border-color: transparent; }
+.canteen-order-summary { display: flex; max-width: 420px; flex-direction: column; gap: 8px; margin: 13px 0 0 auto; padding: 12px; background: #f8f9f6; border: 1px solid #edf0e9; }
+.canteen-order-summary > strong { margin-bottom: 2px; color: #50604f; font-size: 10px; }
+.canteen-order-summary > span { display: flex; justify-content: space-between; gap: 8px; color: #808a7d; font-size: 8px; }
+.canteen-order-summary > span > b { color: #586c54; font-weight: 600; }
+.canteen-order-summary > .canteen-summary-total { margin-top: 3px; padding-top: 8px; color: #465344; font-size: 9px; border-top: 1px solid #e8ebe4; }
+.canteen-order-summary > .canteen-summary-total > b { color: #354c39; font-size: 12px; }
+.canteen-order-summary > .module-primary { align-self: flex-start; margin-top: 3px; }
+.canteen-order-list { display: grid; gap: 10px; }
+.canteen-order-card { padding: 13px; background: #fff; border: 1px solid #e9ece6; border-radius: 3px; }
+.canteen-order-heading { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.canteen-order-heading h3 { margin: 4px 0 0; color: #3d4c40; font-size: 13px; }
+.canteen-order-status { flex: 0 0 auto; padding: 5px 7px; color: #7e704f; font-size: 8px; font-weight: 700; background: #f5f0e5; border-radius: 2px; }
+.canteen-order-status.status-accepted, .canteen-order-status.status-ready, .canteen-order-status.status-completed { color: #567652; background: #edf3e9; }
+.canteen-order-status.status-preparing { color: #627888; background: #edf2f4; }
+.canteen-order-status.status-rejected { color: #a0574a; background: #f8eeeb; }
+.canteen-order-items { display: flex; flex-direction: column; gap: 6px; margin: 11px 0; padding: 10px 0; border-top: 1px solid #eff0ed; border-bottom: 1px solid #eff0ed; }
+.canteen-order-items > span { display: flex; justify-content: space-between; gap: 10px; color: #717c70; font-size: 8px; }
+.canteen-order-items > span > b { color: #556a50; font-weight: 600; }
+.canteen-order-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #879084; font-size: 8px; }
+.canteen-order-meta > span { display: flex; align-items: center; gap: 5px; }
+.canteen-order-meta > strong { color: #465a46; font-size: 10px; }
+.canteen-timeline { display: flex; justify-content: space-between; gap: 3px; margin-top: 15px; padding-top: 12px; border-top: 1px solid #eff0ed; }
+.canteen-timeline-step { position: relative; display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: center; gap: 5px; color: #a0a69c; font-size: 7px; text-align: center; }
+.canteen-timeline-step > i { display: grid; width: 19px; height: 19px; place-items: center; color: #9ba397; font-size: 8px; font-style: normal; background: #f2f3ef; border-radius: 50%; }
+.canteen-timeline-step.timeline-complete { color: #66815e; }
+.canteen-timeline-step.timeline-complete > i { color: white; background: #78946f; }
+.canteen-timeline-step.timeline-current > i { outline: 2px solid #dfe9da; outline-offset: 2px; }
+.canteen-rejected-note { margin: 9px 0 0; color: #a05f53; font-size: 8px; }
+.canteen-order-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #eff0ed; }
+.canteen-order-actions > button { min-height: 30px; font-size: 8px; }
+.canteen-reject-action { padding: 0 9px; color: #a45e52; font-size: 8px; background: #fff; border: 1px solid #efdeda; border-radius: 2px; cursor: pointer; }
+.canteen-reject-action:disabled { opacity: .55; cursor: wait; }
+.canteen-alert { display: flex; align-items: center; gap: 8px; }
+.canteen-alert > button { margin-left: auto; }
+.canteen-notifications { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 11px; background: #f3f6ef; border: 1px solid #e5ecdf; }
+.canteen-notifications > .section-eyebrow { margin-bottom: 2px; }
+.canteen-notifications > button { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; padding: 7px 0; color: #758070; text-align: left; background: transparent; border: 0; border-top: 1px solid #e5ebdf; cursor: pointer; }
+.canteen-notifications > button > strong { color: #4e654a; font-size: 9px; }
+.canteen-notifications > button > span { flex: 1 1 180px; font-size: 8px; }
+.canteen-notifications > button > small { color: #91998c; font-size: 7px; }
+.canteen-edit-dialog { width: min(520px,calc(100vw - 28px)); max-height: 86svh; overflow-y: auto; }
+.canteen-item-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 13px; }
+.canteen-item-form > label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #798478; font-size: 8px; font-weight: 700; letter-spacing: .35px; }
+.canteen-item-form input:not([type=checkbox]), .canteen-item-form select, .canteen-item-form textarea { width: 100%; min-height: 34px; padding: 7px; color: #465345; font-size: 9px; background: #fff; border: 1px solid #e7eae3; border-radius: 2px; }
+.canteen-item-form textarea { min-height: 60px; resize: vertical; }
+.canteen-description-field { grid-column: 1/-1; }
+.canteen-availability-field { grid-column: 1/-1; flex-direction: row !important; align-items: center; letter-spacing: 0 !important; }
+.canteen-availability-field > input { accent-color: #557452; }
+.canteen-item-form > .login-form-error, .canteen-item-form > .approval-request-actions { grid-column: 1/-1; }
+.canteen-staff-shell { min-height: 100vh; background: var(--canvas); }
+@media (max-width: 980px) { .canteen-food-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 780px) {
   .lost-found-detail-grid { grid-template-columns: 1fr; }
   .lost-found-stat-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 @media (max-width: 620px) {
+  .canteen-food-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+  .canteen-food-image { height: 88px; }
+  .canteen-food-card-body { padding: 8px; }
+  .canteen-food-card h3 { font-size: 10px; }
+  .canteen-food-card-footer > strong { font-size: 12px; }
+  .canteen-filters > select { flex: 1 1 100%; }
+  .canteen-filters > .module-primary { flex: 1 1 100%; }
+  .canteen-cart, .canteen-orders-section { padding: 11px; }
+  .canteen-item-form { grid-template-columns: 1fr; }
+  .canteen-description-field, .canteen-availability-field, .canteen-item-form > .login-form-error, .canteen-item-form > .approval-request-actions { grid-column: 1; }
+  .canteen-hero { align-items: flex-start; }
+  .canteen-timeline-step { font-size: 6px; }
   .lost-found-hero { align-items: flex-start; flex-direction: column; }
   .lost-found-report-actions { width: 100%; }
   .lost-found-form { grid-template-columns: 1fr; }
@@ -1083,4 +1196,93 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
   .admin-filter-row > label { min-width: 0; }
   .admin-filter-row > label > select { width: 100%; }
   .filter-reset { justify-self: start; }
+}
+
+.sports-tabs { display: flex; gap: 5px; overflow-x: auto; margin: 18px 0 15px; padding-bottom: 5px; border-bottom: 1px solid #e7eae4; }
+.sports-tabs button, .sports-action-row button { flex: 0 0 auto; padding: 8px 11px; color: #667164; background: #fff; border: 1px solid #e5e9e2; border-radius: 3px; font: inherit; font-size: 10px; cursor: pointer; }
+.sports-tabs .sports-tab-active { color: #fff; background: #526a4d; border-color: #526a4d; }
+.sports-management-panel, .sports-team-details, .sports-student-content { padding: 17px; background: #fff; border: 1px solid #e8ebe5; border-radius: 4px; }
+.sports-management-panel > .management-heading { margin-bottom: 14px; }
+.sports-management-panel .management-heading p { max-width: 620px; margin: 5px 0 0; color: #7b8478; font-size: 10px; line-height: 1.6; }
+.sports-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; margin: 13px 0 18px; padding: 13px; background: #f7f8f5; border: 1px solid #edf0e9; }
+.sports-field { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #788174; font-size: 9px; font-weight: 700; }
+.sports-field input, .sports-field select, .sports-record-row select, .sports-team-details select { width: 100%; min-height: 34px; padding: 7px 8px; color: #3f4b3d; background: #fff; border: 1px solid #e1e6dd; border-radius: 3px; font: inherit; font-size: 10px; }
+.sports-field select[multiple] { min-height: 74px; }
+.sports-form-grid > .module-primary { align-self: end; justify-self: start; min-height: 34px; }
+.sports-inline-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; margin-top: 10px; }
+.sports-action-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sports-record-row > .module-row-body { flex: 1; }
+.sports-record-row > .sports-action-row, .sports-record-row > label, .sports-record-row > select { flex: 0 0 auto; max-width: 210px; }
+.sports-record-row small { color: #7b8478; }
+.sports-management-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 17px 0; }
+.sports-management-stats button { display: grid; grid-template-columns: 26px 1fr; gap: 3px 9px; align-items: center; min-height: 76px; padding: 12px; text-align: left; color: #60745a; background: #fff; border: 1px solid #e8ebe5; border-radius: 4px; cursor: pointer; }
+.sports-management-stats button > span { color: #737d70; font-size: 9px; }
+.sports-management-stats button > strong { grid-column: 2; color: #354435; font-size: 18px; }
+.sports-team-overview, .sports-card-grid, .sports-student-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 15px 0; }
+.sports-team-summary, .sports-event-card, .sports-team-card, .sports-student-metrics article { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 7px; padding: 13px; text-align: left; color: #455141; background: #fff; border: 1px solid #e8ebe5; border-radius: 4px; }
+.sports-team-member-list { display: grid; width: 100%; gap: 4px; color: #727d70; font-size: 9px; }
+.sports-team-summary { cursor: pointer; }
+.sports-team-selected { border-color: #6c8663; box-shadow: 0 0 0 1px #6c8663; }
+.sports-team-summary strong, .sports-event-card h3, .sports-team-card h3 { margin: 0; color: #384339; font-family: var(--serif); font-size: 15px; }
+.sports-event-card p, .sports-team-card p, .sports-team-details p { margin: 0; color: #7b8478; font-size: 10px; line-height: 1.65; }
+.sports-event-meta { display: grid; gap: 6px; color: #6f7a6b; font-size: 9px; }
+.sports-event-meta span { display: flex; align-items: center; gap: 5px; }
+.sports-status { color: #65805a; font-size: 9px; font-weight: 700; }
+.sports-empty { margin: 8px 0; color: #7b8478; font-size: 10px; }
+.sports-student-metrics article { flex-direction: row; align-items: center; color: #627c59; }
+.sports-student-metrics article > span { display: grid; gap: 3px; color: #788174; font-size: 9px; }
+.sports-student-metrics article b { color: #374536; font-size: 19px; }
+.sports-student-content > h2, .sports-team-details > h3, .sports-student-content > h3 { margin: 18px 0 9px; color: #384339; font-family: var(--serif); font-size: 15px; }
+.sports-team-details { margin-top: 15px; }
+.sports-management-page .dashboard-footer, .sports-student-page .dashboard-footer { margin-top: 18px; }
+.notice-board-page .module-hero { align-items: center; }
+.notice-compose-panel { margin: 22px 0; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }
+.notice-compose-panel .management-heading { margin-bottom: 18px; }
+.notice-description-field { grid-column: 1 / -1; }
+.notice-description-field textarea { min-height: 132px; resize: vertical; }
+.notice-pin-option { display: flex; align-items: center; gap: 9px; color: var(--ink-secondary); font-size: 13px; }
+.notice-pin-option input { accent-color: #a97618; }
+.notice-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 24px 0 16px; }
+.notice-search { display: flex; align-items: center; gap: 9px; flex: 1 1 240px; min-width: 190px; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--muted); }
+.notice-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }
+.notice-category-filter { display: flex; align-items: center; gap: 8px; color: var(--ink-secondary); font-size: 12px; }
+.notice-category-filter select { min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--ink); }
+.notice-toolbar .sports-tabs { margin: 0; }
+.notice-list { display: grid; gap: 11px; }
+.notice-card { display: flex; gap: 14px; width: 100%; padding: 18px; text-align: left; color: inherit; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); cursor: pointer; transition: border-color .16s ease, transform .16s ease; }
+.notice-card:hover { border-color: #c8953b; transform: translateY(-1px); }
+.notice-card.notice-unread { border-left: 3px solid #c8953b; }
+.notice-priority-mark { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 10px; background: #f5f6f3; color: var(--muted); }
+.notice-priority-mark.important { background: #fff4da; color: #9a6800; }
+.notice-priority-mark.urgent { background: #ffe8e7; color: #b52a22; }
+.notice-card-main { display: grid; gap: 7px; min-width: 0; }
+.notice-card-meta { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 11px; }
+.notice-card-meta i { color: #9a6800; font-size: 9px; font-style: normal; font-weight: 700; }
+.notice-card-main > strong { color: var(--ink); font-size: 15px; }
+.notice-card-preview { overflow: hidden; color: var(--ink-secondary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.notice-card-main small { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.notice-detail-modal { width: min(640px, calc(100vw - 32px)); max-height: min(80vh, 800px); overflow-y: auto; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: 0 24px 70px #15261c33; }
+.notice-detail-modal header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.notice-detail-modal header h2 { margin: 8px 0 0; color: var(--ink); }
+.notice-issuer-line { color: var(--muted); font-size: 12px; }
+.notice-detail-content { margin: 20px 0; color: var(--ink-secondary); line-height: 1.7; white-space: pre-wrap; }
+.notice-attachment { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px; color: #28634d; }
+.notice-detail-modal > .module-primary { display: flex; margin-left: auto; }
+@media (max-width: 760px) {
+  .sports-management-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .sports-management-panel, .sports-team-details, .sports-student-content { padding: 11px; }
+  .sports-form-grid, .sports-inline-form, .sports-team-overview, .sports-card-grid, .sports-student-metrics { grid-template-columns: minmax(0, 1fr); }
+  .sports-management-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .notice-toolbar { align-items: stretch; }
+  .notice-category-filter { justify-content: space-between; }
+  .notice-category-filter select { flex: 1; }
+  .notice-toolbar .sports-tabs { overflow-x: auto; }
+  .notice-compose-panel { padding: 16px; }
+  .notice-card { padding: 14px; }
+  .notice-card-preview { white-space: normal; }
+  .sports-record-row { align-items: flex-start; flex-wrap: wrap; }
+  .sports-record-row > .sports-action-row { max-width: 100%; margin-left: 0; }
+  .sports-team-details .management-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
 }

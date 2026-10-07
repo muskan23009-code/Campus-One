@@ -78,6 +78,7 @@ async function createPasswordAndLogin(requestId, requestToken, userId, role, ema
 
   let result = await request('/api/auth/login', { method: 'POST', body: { userId, role, password: permanentPassword(role) } })
   assert.equal(result.response.status, 401, 'approval alone does not allow sign-in')
+  assert.equal(result.result.error, 'Invalid User ID or password.')
 
   result = await request('/api/registrations/status', {
     method: 'POST',
@@ -167,6 +168,10 @@ async function createPasswordAndLogin(requestId, requestToken, userId, role, ema
     'Sports Captain': 'sports-management',
   }[role]
   assert.ok(result.result.modules.includes(roleDashboardModule), `${role} login receives its role-specific dashboard module`)
+  assert.match(result.cookie || '', /^campus_session=/, 'successful login creates the authenticated session cookie')
+  const session = await request('/api/auth/me', { cookie: result.cookie })
+  assert.equal(session.response.status, 200, 'the login session is accepted by the authenticated endpoint')
+  assert.equal(session.result.user.id, userId)
   return result.cookie
 }
 
@@ -187,7 +192,7 @@ after(async () => {
   await store?.clear()
 })
 
-test('protected Administration setup and exactly five role-specific login identities', async () => {
+test('protected Administration setup and role-specific login identities', async () => {
   let result = await request('/api/auth/bootstrap-status')
   assert.equal(result.response.status, 200)
   assert.equal(result.result.setupRequired, true)
@@ -495,15 +500,29 @@ test('rejected registrations cannot log in and permanent role IDs are never reus
   assert.equal(result.response.status, 201)
   const foodOrderId = result.result.order.id
   assert.equal(result.result.order.status, 'Placed', 'the server controls initial order status')
+  assert.deepEqual(
+    [result.result.order.customerUserId, result.result.order.customerName, result.result.order.customerRole],
+    ['PM-S1002', 'CS Student', 'Student'],
+  )
   assert.equal(Object.hasOwn(result.result.order, 'price'), false, 'clients cannot set menu prices')
   result = await request('/api/food/orders', { cookie: activeStudentCookie })
   assert.deepEqual(result.result.orders.map((order) => order.id), [foodOrderId])
   result = await request('/api/food/orders', { method: 'POST', cookie: hodCookie, body: { meal: 'Lunch', item: 'Paneer tikka wrap' } })
-  assert.equal(result.response.status, 403, 'HOD and other nonstudent roles cannot create student canteen orders')
+  assert.equal(result.response.status, 201, 'HODs can place customer canteen orders')
+  assert.equal(result.result.order.customerRole, 'HOD')
+  result = await request('/api/food/orders', { cookie: hodCookie })
+  assert.equal(result.result.orders.length, 1, 'customers only see their own orders')
+  assert.equal(result.result.orders[0].customerRole, 'HOD')
   result = await request(`/api/food/orders/${encodeURIComponent(foodOrderId)}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'Ready' } })
-  assert.equal(result.response.status, 200)
+  assert.equal(result.response.status, 403, 'Administration cannot manage customer order status')
+  result = await request(`/api/food/orders/${encodeURIComponent(foodOrderId)}`, { method: 'PATCH', cookie: activeStudentCookie, body: { status: 'Cancelled' } })
+  assert.equal(result.response.status, 403, 'customers can only view order status')
   result = await request('/api/food/orders', { cookie: activeStudentCookie })
-  assert.equal(result.result.orders[0].status, 'Ready', 'students can track Administration-updated order status')
+  assert.equal(result.result.orders[0].status, 'Placed', 'customers can track status without changing it')
+  result = await request('/api/food/orders', { method: 'POST', cookie: adminCookie, body: { meal: 'Lunch', item: 'Paneer tikka wrap' } })
+  assert.equal(result.response.status, 201, 'Administration can place customer orders')
+  result = await request('/api/food/orders', { cookie: adminCookie })
+  assert.equal(result.result.orders.length, 1, 'Administration only sees its own customer orders')
   result = await request(`/api/campus/food/${encodeURIComponent('food-mess')}`, { method: 'PATCH', cookie: adminCookie, body: { title: 'North student mess', description: 'Manual crowd estimate · service closes at 2:30 pm', crowdLevel: 'Busy', occupancyPercent: 82, estimatedWaitMinutes: 16 } })
   assert.equal(result.response.status, 200)
   assert.equal(result.result.record.crowdLevel, 'Busy')

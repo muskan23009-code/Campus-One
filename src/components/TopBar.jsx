@@ -20,6 +20,7 @@ export default function TopBar({ pageTitle, onNavigate, onAction, user, onMobile
     ['emergency', 'Emergency contacts'], ['analytics', 'Campus insights'],
     ['department-requests', 'Student registration requests'],
     ['department-students', 'Department students'],
+    ['sports-management', 'Sports Management'],
   ]
 
   useEffect(() => {
