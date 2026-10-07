@@ -2,13 +2,13 @@ import { useState } from 'react'
 import {
   Activity, Bus, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown,
   ChevronLeft, ContactRound, HeartPulse, LayoutDashboard, LibraryBig,
-  Map, Megaphone, MessageCircle, PackageSearch, Settings2, ShieldAlert,
+  Map, Megaphone, MessageSquareWarning, PackageSearch, Settings2, ShieldAlert,
   Sparkles, Trophy, UserRoundCheck, UsersRound, Utensils, X,
 } from 'lucide-react'
 import { navigationGroups } from '../data/campusData'
 import { canSeePage } from '../auth/access'
 
-const icons = { LayoutDashboard, Sparkles, Megaphone, Utensils, Map, ContactRound, MessageCircle, Activity, CalendarDays, LibraryBig, Building2, Bus, PackageSearch, ShieldAlert, ChartNoAxesCombined, UsersRound, Settings2, Trophy, UserRoundCheck }
+const icons = { LayoutDashboard, Sparkles, Megaphone, Utensils, Map, ContactRound, MessageSquareWarning, Activity, CalendarDays, LibraryBig, Building2, Bus, PackageSearch, ShieldAlert, ChartNoAxesCombined, UsersRound, Settings2, Trophy, UserRoundCheck }
 
 export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose, user, onLogout }) {
   const [collapsed, setCollapsed] = useState(false)

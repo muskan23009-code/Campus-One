@@ -28,7 +28,7 @@ export const STAFF_MODULES = Object.freeze([
 ])
 
 export const HOD_MODULES = Object.freeze([
-  'overview', 'notices', 'department-requests', 'department-students',
+  'overview', 'notices', 'complaints', 'lost-found', 'department-requests', 'department-students',
 ])
 
 export const ALL_MODULES = Object.freeze([
@@ -44,7 +44,7 @@ export function modulesForUser(user) {
     return [...new Set([...STAFF_MODULES, ...(user.modules || [])])]
   }
   if (user.role === ROLES.SPORTS) {
-    return ['overview', 'notices', 'events', 'sports', 'sports-management']
+    return ['overview', 'notices', 'complaints', 'lost-found', 'events', 'sports', 'sports-management']
   }
   return []
 }
@@ -55,7 +55,7 @@ export function canAccess(user, moduleId) {
 
 export const MANAGEMENT_COLLECTIONS = Object.freeze([
   'notices', 'food', 'events', 'library', 'hostel', 'transport',
-  'lost-found', 'directory', 'emergency',
+  'directory', 'emergency',
 ])
 
 export const DEPARTMENTS = Object.freeze([
@@ -88,10 +88,6 @@ export const DEFAULT_CAMPUS_DATA = Object.freeze({
   transport: [
     { id: 'transport-s04', title: 'Route S-04', description: 'West campus · Library · Student residence', active: true },
     { id: 'transport-shuttle', title: 'Campus shuttle', description: 'Gate 2 · Every 15 minutes', active: true },
-  ],
-  'lost-found': [
-    { id: 'lost-water-bottle', title: 'Blue water bottle', description: 'Found · Engineering Block A', active: true },
-    { id: 'lost-earbuds', title: 'Wireless earbuds', description: 'Reported lost · Sports complex', active: true },
   ],
   directory: [
     { id: 'directory-engineering', title: 'School of Engineering', description: 'Academic Block A · Mon–Fri, 9 am–4 pm', active: true },

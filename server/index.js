@@ -3,7 +3,10 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { createServer as createViteServer } from 'vite'
 import { createCampusApp } from './app.js'
+import { loadProjectEnvironment } from './env.js'
 import { createStore } from './store.js'
+
+loadProjectEnvironment()
 
 export async function startServer(options = {}) {
   const production = options.production ?? process.env.NODE_ENV === 'production'

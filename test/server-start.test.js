@@ -1,9 +1,10 @@
 import { request as httpRequest } from 'node:http'
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { loadProjectEnvironment } from '../server/env.js'
 import { startServer } from '../server/index.js'
 
 function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie, body } = {}) {
@@ -28,6 +29,27 @@ function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie
   })
 }
 
+test('project env files load persistently without overriding process-provided values', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'campus-one-env-'))
+  const key = 'CAMPUS_ADMIN_ACCESS_CODE'
+  const original = process.env[key]
+  try {
+    await writeFile(join(directory, '.env'), `${key}=base-test-code\n`)
+    await writeFile(join(directory, '.env.local'), `${key}=local-test-code\n`)
+    delete process.env[key]
+    loadProjectEnvironment(directory)
+    assert.equal(process.env[key], 'local-test-code', 'the local file takes precedence over the base env file')
+
+    process.env[key] = 'process-test-code'
+    loadProjectEnvironment(directory)
+    assert.equal(process.env[key], 'process-test-code', 'Codespaces or deployment environment values take precedence')
+  } finally {
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('the full Vite and auth server serves a Codespaces forwarded host', async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-server-'))
   const instance = await startServer({ port: 0, dataDirectory })
@@ -45,7 +67,7 @@ test('the full Vite and auth server serves a Codespaces forwarded host', async (
     response = await forwardedRequest(`${url}/api/auth/bootstrap-status`, { host })
     const setup = JSON.parse(response.text)
     assert.equal(setup.setupRequired, true)
-    assert.equal(setup.adminAccessConfigured, false)
+    assert.equal(setup.adminAccessConfigured, Boolean(process.env.CAMPUS_ADMIN_ACCESS_CODE && process.env.CAMPUS_ADMIN_ACCESS_CODE.length >= 5))
     assert.ok(setup.departments.includes('Computer Science'))
 
     response = await forwardedRequest(`${url}/api/registrations`, {

@@ -13,10 +13,10 @@ export default function TopBar({ pageTitle, onNavigate, onAction, user, onMobile
   const choices = [
     ['copilot', 'Ask AI Campus Copilot'], ['notices', 'Latest campus notices'],
     ['food', 'Food & dining'], ['navigation', 'Campus map'],
-    ['directory', 'People & campus directory'], ['complaints', 'Help & feedback'],
+    ['directory', 'People & campus directory'], ['complaints', 'Complaint & Issue Tracker'],
     ['sports', 'Sports & wellness'], ['events', 'Events & clubs'],
     ['library', 'Library & study spaces'], ['hostel', 'Hostel services'],
-    ['transport', 'Campus transport'], ['lost-found', 'Lost & found'],
+    ['transport', 'Campus transport'], ['lost-found', 'Lost & Found'],
     ['emergency', 'Emergency contacts'], ['analytics', 'Campus insights'],
     ['department-requests', 'Student registration requests'],
     ['department-students', 'Department students'],

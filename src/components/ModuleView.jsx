@@ -37,7 +37,7 @@ export default function ModuleView({ page, user, onAction }) {
     let active = true
     setLiveRecords(null)
     setComplaintRecords(null)
-    const collections = { notices: 'notices', food: 'food', events: 'events', library: 'library', hostel: 'hostel', transport: 'transport', 'lost-found': 'lost-found', directory: 'directory', emergency: 'emergency' }
+    const collections = { notices: 'notices', food: 'food', events: 'events', library: 'library', hostel: 'hostel', transport: 'transport', directory: 'directory', emergency: 'emergency' }
     const request = page === 'complaints' ? api('/api/complaints') : page === 'food' ? Promise.all([api('/api/campus/food'), user.role === 'Student' ? api('/api/food/orders') : Promise.resolve({ orders: [] })]) : collections[page] ? api(`/api/campus/${collections[page]}`) : page === 'sports' ? api('/api/sports') : null
     if (!request) { setLiveRecords(null); setComplaintRecords(null); setRecordsError(''); return () => { active = false } }
     setRecordsError('')

@@ -347,6 +347,12 @@ test('pending registrations, role-specific approvals, and sequential immutable I
   result = await request('/api/auth/login', { method: 'POST', body: { userId: adminId, role: 'Administration', password: PASSWORD } })
   assert.equal(result.response.status, 200)
   adminCookie = result.cookie
+  result = await request('/api/auth/me', { cookie: adminCookie })
+  assert.equal(result.response.status, 200, 'the Administration session restores successfully')
+  assert.equal(result.result.user.id, adminId, 'the existing Administration ID remains valid after setup')
+  assert.equal(result.result.user.role, 'Administration')
+  assert.ok(result.result.modules.includes('campus-management'), 'Administration receives its dashboard permissions')
+  assert.ok(result.result.modules.includes('users'), 'Administration can reach user management from its dashboard')
   result = await request('/api/users', { method: 'POST', cookie: adminCookie, body: { role: 'HOD', name: 'Manual HOD', temporaryPassword: PASSWORD } })
   assert.equal(result.response.status, 404, 'Administration cannot create user accounts or passwords directly')
   result = await request(`/api/users/${encodeURIComponent('PM-ST001')}/reset-password`, { method: 'POST', cookie: adminCookie, body: { temporaryPassword: PASSWORD } })

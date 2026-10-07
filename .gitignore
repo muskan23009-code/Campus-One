@@ -3,3 +3,5 @@ dist/
 .vite/
 .data/
 coverage/
+.env
+.env.local

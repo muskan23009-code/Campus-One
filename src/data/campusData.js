@@ -13,10 +13,16 @@ export const navigationGroups = [
     label: 'STUDENT LIFE',
     items: [
       { id: 'directory', label: 'Campus database', icon: 'ContactRound' },
-      { id: 'complaints', label: 'Help & feedback', icon: 'MessageCircle' },
       { id: 'sports', label: 'Sports & wellness', icon: 'Activity' },
       { id: 'events', label: 'Events & clubs', icon: 'CalendarDays' },
       { id: 'library', label: 'Library', icon: 'LibraryBig' },
+    ],
+  },
+  {
+    label: 'CAMPUS SUPPORT',
+    items: [
+      { id: 'complaints', label: 'Complaint & Issue Tracker', icon: 'MessageSquareWarning' },
+      { id: 'lost-found', label: 'Lost & Found', icon: 'PackageSearch' },
     ],
   },
   {
@@ -24,7 +30,6 @@ export const navigationGroups = [
     items: [
       { id: 'hostel', label: 'Hostel', icon: 'Building2' },
       { id: 'transport', label: 'Transport', icon: 'Bus' },
-      { id: 'lost-found', label: 'Lost & found', icon: 'PackageSearch' },
       { id: 'emergency', label: 'Emergency', icon: 'ShieldAlert' },
       { id: 'analytics', label: 'Campus insights', icon: 'ChartNoAxesCombined' },
     ],
@@ -119,14 +124,6 @@ export const moduleDetails = {
     stats: [['Faculty', 'Search departments'], ['Student services', '8 campus offices'], ['Campus places', 'Always discoverable']],
     rows: [['School of Engineering', 'Academic office · Academic Block A · Mon–Fri, 9 am–4 pm', 'Contact department'], ['Student affairs', 'Student services · Administration building · Mon–Sat, 9 am–5 pm', 'Contact office'], ['Health & wellness', 'Campus infirmary · Student services building · Everyday, 8 am–8 pm', 'Get in touch'], ['Registrar’s office', 'Academic records · Administration building · Mon–Fri, 9 am–4 pm', 'Contact registrar']],
   },
-  complaints: {
-    eyebrow: 'A BETTER CAMPUS STARTS WITH YOUR VOICE',
-    title: 'Help & feedback',
-    description: 'Tell us what needs attention. Track your request from first message to resolution.',
-    icon: 'MessageCircle', accent: 'blue',
-    stats: [['2 open', 'Your requests'], ['Confidential', 'Private submissions'], ['Avg. 2 days', 'First response']],
-    rows: [['Wi-Fi connectivity in hostel', 'IT services · Submitted Oct 2 · In progress', 'Track request'], ['Repair in the common room', 'Campus facilities · Submitted Sep 29 · Received', 'Track request'], ['Tell us something', 'Share a concern, idea or compliment with the right team.', 'Start a new request']],
-  },
   sports: {
     eyebrow: 'FIND YOUR KIND OF ACTIVE',
     title: 'Sports & wellness',
@@ -172,8 +169,8 @@ export const moduleDetails = {
     title: 'Lost & found',
     description: 'Reconnect belongings with their owners, with privacy and a campus-wide search.',
     icon: 'PackageSearch', accent: 'amber',
-    stats: [['6 recent', 'Items reported'], ['3 unclaimed', 'Awaiting collection'], ['Private', 'Your details stay protected']],
-    rows: [['Blue water bottle', 'Found · Engineering Block A · Today, 11:15 am', 'See details'], ['Student ID card', 'Found · Main library · Today, 9:40 am', 'See details'], ['Wireless earbuds', 'Lost · Sports complex · Reported yesterday', 'See details'], ['Something is missing?', 'Let the campus know what you’re looking for.', 'Report an item']],
+    stats: [],
+    rows: [],
   },
   emergency: {
     eyebrow: 'CAMPUS SAFETY, CLOSE AT HAND',

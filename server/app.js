@@ -14,12 +14,26 @@ import {
 
 const BODY_LIMIT = 2_000_000
 const PHOTO_LIMIT = 1_400_000
+const COMPLAINT_PHOTO_BYTES_LIMIT = 1_000_000
+const COMPLAINT_CATEGORIES = Object.freeze([
+  'Cleanliness', 'Electrical', 'Water', 'Hostel', 'Classroom', 'Canteen/Mess',
+  'Sports', 'Transport', 'Infrastructure', 'Security', 'IT/Technical', 'Other',
+])
+const COMPLAINT_STATUSES = Object.freeze(['SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'])
+const LOST_FOUND_CATEGORIES = Object.freeze([
+  'ID Card', 'Mobile/Device', 'Books/Notes', 'Wallet/Bag', 'Keys', 'Clothing',
+  'Accessories', 'Sports Equipment', 'Other',
+])
+const LOST_FOUND_TYPES = Object.freeze(['LOST', 'FOUND'])
+const LOST_FOUND_STATUSES = Object.freeze([
+  'LOST', 'FOUND', 'MATCHED', 'CLAIM_REQUESTED', 'CLAIM_VERIFIED', 'RETURNED', 'CLOSED',
+])
+const LOST_FOUND_PHOTO_BYTES_LIMIT = 1_000_000
 const PASSWORD_ATTEMPT_LIMIT = 10
 const PASSWORD_ATTEMPT_WINDOW = 15 * 60 * 1000
 const CAMPUS_MODULES = {
   notices: 'notices', food: 'food', events: 'events', library: 'library',
-  hostel: 'hostel', transport: 'transport', 'lost-found': 'lost-found',
-  directory: 'directory', emergency: 'emergency',
+  hostel: 'hostel', transport: 'transport', directory: 'directory', emergency: 'emergency',
 }
 const DUMMY_CREDENTIALS = await hashPassword(randomUUID())
 const MIME_TYPES = {
@@ -805,46 +819,420 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return reject(response, 405, 'This operation is not available.')
     }
 
+    if (pathname === '/api/lost-found' && request.method === 'GET') {
+      if (!canAccess(user, 'lost-found')) return reject(response, 403, 'Your role cannot access Lost & Found.')
+      const data = await store.read()
+      const search = safeText(searchParams.get('q'), 120).toLowerCase().split(/\s+/).filter(Boolean)
+      const visible = (data.lostFoundReports || [])
+        .filter((record) => canViewLostFound(user, record))
+        .filter((record) => searchParams.get('mine') !== '1' || record.reporterId === user.id)
+        .filter((record) => !searchParams.get('type') || record.type === searchParams.get('type'))
+        .filter((record) => !searchParams.get('status') || record.status === searchParams.get('status'))
+        .filter((record) => !searchParams.get('category') || record.category === searchParams.get('category'))
+        .filter((record) => !searchParams.get('date') || record.itemDate === searchParams.get('date') || record.createdAt.slice(0, 10) === searchParams.get('date'))
+        .filter((record) => !search.length || search.every((term) =>
+          [record.itemName, record.category, record.location, record.description].join(' ').toLowerCase().includes(term)))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      const serialized = visible.map((record) => publicLostFoundReport(record, user))
+      const requests = (data.lostFoundReports || []).flatMap((record) => {
+        const maySeeClaims = isLostFoundManager(user, record) || record.reporterId === user.id
+        const visibleClaims = (record.claimRequests || []).filter((claim) => claim.claimantId === user.id || maySeeClaims)
+        if (!maySeeClaims && !canViewLostFound(user, record) && !visibleClaims.length) return []
+        return visibleClaims
+          .map((claim) => ({ report: { id: record.id, itemName: record.itemName, category: record.category, status: record.status }, claim: publicLostFoundClaim(claim, user, record, false) }))
+      })
+      return json(response, 200, {
+        reports: serialized,
+        claimRequests: requests,
+        counts: Object.fromEntries(LOST_FOUND_STATUSES.map((status) => [status, serialized.filter((record) => record.status === status).length])),
+        categories: LOST_FOUND_CATEGORIES,
+      })
+    }
+
+    if (pathname === '/api/lost-found' && request.method === 'POST') {
+      if (!canAccess(user, 'lost-found')) return reject(response, 403, 'Your role cannot submit Lost & Found reports.')
+      const input = await body(request)
+      const report = validateLostFoundReport(input, user)
+      const result = await store.transact(async (data) => {
+        data.lostFoundReports ??= []
+        const duplicate = data.lostFoundReports.find((item) => item.reporterId === user.id && item.submissionKey === report.submissionKey)
+        if (duplicate) return { report: duplicate, created: false }
+        const highestIssuedNumber = data.lostFoundReports.reduce((highest, item) => {
+          const match = /^LF-(\d+)$/.exec(item.id)
+          return match ? Math.max(highest, Number(match[1])) : highest
+        }, Number.isSafeInteger(data.lostFoundCounter) ? data.lostFoundCounter : 0)
+        data.lostFoundCounter = highestIssuedNumber + 1
+        report.id = `LF-${String(data.lostFoundCounter).padStart(6, '0')}`
+        if (report.photo) report.photo = await store.saveLostFoundPhoto(randomUUID(), report.photo.mimeType, report.photo.bytes)
+        const now = new Date().toISOString()
+        report.createdAt = now
+        report.status = report.type
+        report.claimRequests = []
+        report.activity = [lostFoundActivity(user, now, `${report.type === 'LOST' ? 'Lost' : 'Found'} report submitted`, report.status)]
+        data.lostFoundReports.unshift(report)
+        notifyLostFoundAuthorities(data, addNotification, report)
+
+        const match = data.lostFoundReports.find((item) =>
+          item.id !== report.id
+          && item.type !== report.type
+          && item.status === item.type
+          && item.category === report.category
+          && normalizeItemName(item.itemName) === normalizeItemName(report.itemName))
+        if (match) {
+          const matchTime = new Date().toISOString()
+          for (const item of [report, match]) {
+            item.status = 'MATCHED'
+            item.matchedReportId = item.id === report.id ? match.id : report.id
+            item.activity.push(lostFoundActivity(null, matchTime, `Possible match found with ${item.matchedReportId}`, 'MATCHED'))
+            addNotification(data, {
+              recipientUserId: item.reporterId,
+              title: 'Possible Lost & Found match',
+              message: `A possible match was found for ${item.id} · ${item.itemName}.`,
+              referenceId: item.id,
+              target: 'lost-found',
+            })
+          }
+          notifyLostFoundAuthorities(data, addNotification, report)
+        }
+        return { report, created: true }
+      })
+      return json(response, result.created ? 201 : 200, {
+        report: publicLostFoundReport(result.report, user),
+        duplicate: !result.created,
+      })
+    }
+
+    const lostFoundPhotoRoute = pathname.match(/^\/api\/lost-found\/([^/]+)\/photo$/)
+    if (lostFoundPhotoRoute && request.method === 'GET') {
+      const data = await store.read()
+      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundPhotoRoute[1]))
+      if (!report || !canViewLostFound(user, report) || !report.photo) return reject(response, 404, 'Lost-and-found photo not found.')
+      let photo
+      try { photo = await store.readLostFoundPhoto(report.photo.photoId, report.photo.mimeType) } catch (error) {
+        if (error.code === 'ENOENT') return reject(response, 404, 'Lost-and-found photo not found.')
+        throw error
+      }
+      response.writeHead(200, {
+        'Cache-Control': 'private, no-store',
+        'Content-Type': report.photo.mimeType,
+        'Content-Length': photo.length,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+      })
+      return response.end(photo)
+    }
+
+    const lostFoundClaimsRoute = pathname.match(/^\/api\/lost-found\/([^/]+)\/claims(?:\/([^/]+))?$/)
+    if (lostFoundClaimsRoute && !lostFoundClaimsRoute[2] && request.method === 'POST') {
+      const input = await body(request)
+      const details = safeText(input.details, 2000)
+      const submissionKey = safeText(input.submissionKey, 64)
+      if (details.length < 15) return reject(response, 400, 'Provide at least 15 characters of identifying details.')
+      if (!/^[a-f\d-]{36}$/i.test(submissionKey)) return reject(response, 400, 'Refresh the claim form and submit again.')
+      const updated = await store.transact((data) => {
+        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
+        if (!canViewLostFound(user, report)) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
+        if (report.type !== 'FOUND' || report.reporterId === user.id || ['RETURNED', 'CLOSED', 'CLAIM_VERIFIED'].includes(report.status)) {
+          throw Object.assign(new Error('This item cannot receive another claim.'), { status: 409 })
+        }
+        report.claimRequests ??= []
+        const duplicate = report.claimRequests.find((claim) => claim.claimantId === user.id && claim.submissionKey === submissionKey)
+        if (duplicate) return { report, claim: duplicate, created: false }
+        const now = new Date().toISOString()
+        const claim = {
+          id: randomUUID(), claimantId: user.id, claimantName: user.name, claimantRole: user.role,
+          details, status: 'PENDING', submissionKey, createdAt: now, reviewedAt: null, reviewedBy: null,
+        }
+        report.claimRequests.unshift(claim)
+        report.status = 'CLAIM_REQUESTED'
+        report.activity.push(lostFoundActivity(user, now, 'Claim request received', 'CLAIM_REQUESTED'))
+        const matched = (data.lostFoundReports || []).find((item) => item.id === report.matchedReportId)
+        if (matched && matched.status === 'MATCHED') {
+          matched.status = 'CLAIM_REQUESTED'
+          matched.activity.push(lostFoundActivity(user, now, `Claim request received for matched item ${report.id}`, 'CLAIM_REQUESTED'))
+        }
+        addLostFoundReportUpdateNotifications(data, addNotification, report, user, 'Claim request received', `A claim request was submitted for ${report.id} · ${report.itemName}.`)
+        notifyLostFoundAuthorities(data, addNotification, report)
+        return { report, claim, created: true }
+      })
+      return json(response, updated.created ? 201 : 200, {
+        report: publicLostFoundReport(updated.report, user),
+        claim: publicLostFoundClaim(updated.claim, user, updated.report, false),
+        duplicate: !updated.created,
+      })
+    }
+
+    if (lostFoundClaimsRoute && lostFoundClaimsRoute[2] && request.method === 'PATCH') {
+      const input = await body(request)
+      if (!['VERIFIED', 'REJECTED'].includes(input.decision)) return reject(response, 400, 'Choose whether to verify or reject this claim.')
+      const result = await store.transact((data) => {
+        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
+        if (!isLostFoundManager(user, report)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
+        const claim = (report.claimRequests || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[2]))
+        if (!claim) throw Object.assign(new Error('Claim request not found.'), { status: 404 })
+        if (claim.status !== 'PENDING' || report.status !== 'CLAIM_REQUESTED') throw Object.assign(new Error('This claim has already been reviewed.'), { status: 409 })
+        const now = new Date().toISOString()
+        claim.status = input.decision
+        claim.reviewedAt = now
+        claim.reviewedBy = lostFoundActor(user)
+        report.activity.push(lostFoundActivity(user, now, `Claim ${input.decision.toLowerCase()}`, input.decision === 'VERIFIED' ? 'CLAIM_VERIFIED' : 'CLAIM_REQUESTED'))
+        if (input.decision === 'VERIFIED') {
+          rejectPendingLostFoundClaims(data, report, claim.id, user, now, addNotification, 'Another claim was verified for this item.')
+          report.status = 'CLAIM_VERIFIED'
+          report.activity.push(lostFoundActivity(user, now, 'Claim verified', 'CLAIM_VERIFIED'))
+        } else if (!report.claimRequests.some((item) => item.status === 'PENDING')) {
+          report.status = report.matchedReportId ? 'MATCHED' : 'FOUND'
+        }
+        const matched = (data.lostFoundReports || []).find((item) => item.id === report.matchedReportId)
+        if (matched && isLostFoundManager(user, matched)) {
+          matched.status = report.status
+          matched.activity.push(lostFoundActivity(user, now, `Matched report ${report.id} is now ${report.status.toLowerCase().replaceAll('_', ' ')}`, report.status))
+        }
+        addNotification(data, {
+          recipientUserId: claim.claimantId,
+          title: input.decision === 'VERIFIED' ? 'Claim verified' : 'Claim not verified',
+          message: `Your claim for ${report.id} · ${report.itemName} was ${input.decision.toLowerCase()}.`,
+          referenceId: report.id,
+          target: 'lost-found',
+        })
+        addLostFoundReportUpdateNotifications(data, addNotification, report, user, `Claim ${input.decision.toLowerCase()}`, `${report.id} · ${report.itemName} claim status was updated.`)
+        return { report, claim }
+      })
+      return json(response, 200, {
+        report: publicLostFoundReport(result.report, user),
+        claim: publicLostFoundClaim(result.claim, user, result.report, true),
+      })
+    }
+
+    const lostFoundNoteRoute = pathname.match(/^\/api\/lost-found\/([^/]+)\/notes$/)
+    if (lostFoundNoteRoute && request.method === 'POST') {
+      if (!isLostFoundManager(user, null)) return reject(response, 403, 'Only authorized Staff, HOD, Sports Captain, and Administration can add official notes.')
+      const message = safeText((await body(request)).message, 2000)
+      if (message.length < 2) return reject(response, 400, 'Add an official note of at least two characters.')
+      const report = await store.transact((data) => {
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundNoteRoute[1]))
+        if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
+        if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
+        const now = new Date().toISOString()
+        item.activity.push({ ...lostFoundActivity(user, now, message, item.status), type: 'note' })
+        addLostFoundReportUpdateNotifications(data, addNotification, item, user, 'Report update', `An official update was added to ${item.id}.`)
+        return item
+      })
+      return json(response, 201, { report: publicLostFoundReport(report, user) })
+    }
+
+    const lostFoundReportRoute = pathname.match(/^\/api\/lost-found\/([^/]+)$/)
+    if (lostFoundReportRoute && request.method === 'GET') {
+      const data = await store.read()
+      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundReportRoute[1]))
+      if (!report || !canViewLostFound(user, report)) return reject(response, 404, 'Lost & Found report not found.')
+      return json(response, 200, { report: publicLostFoundReport(report, user) })
+    }
+
+    if (lostFoundReportRoute && request.method === 'PATCH') {
+      if (!isLostFoundManager(user, null)) return reject(response, 403, 'Your role cannot manage Lost & Found reports.')
+      const input = await body(request)
+      if (Object.keys(input).length !== 1 || !['RETURNED', 'CLOSED'].includes(input.status)) return reject(response, 400, 'Choose an allowed Lost & Found status update.')
+      const report = await store.transact((data) => {
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundReportRoute[1]))
+        if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
+        if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
+        if (input.status === 'RETURNED' && item.status !== 'CLAIM_VERIFIED') throw Object.assign(new Error('Verify a claim before marking an item returned.'), { status: 409 })
+        if (input.status === 'CLOSED' && item.status === 'CLOSED') throw Object.assign(new Error('This report is already closed.'), { status: 409 })
+        const now = new Date().toISOString()
+        item.status = input.status
+        item.activity.push(lostFoundActivity(user, now, input.status === 'RETURNED' ? 'Item marked returned' : 'Report closed', input.status))
+        rejectPendingLostFoundClaims(data, item, '', user, now, addNotification, `The item was marked ${input.status.toLowerCase()}.`)
+        const matched = (data.lostFoundReports || []).find((candidate) => candidate.id === item.matchedReportId)
+        if (matched && isLostFoundManager(user, matched) && matched.status !== input.status) {
+          matched.status = input.status
+          matched.activity.push(lostFoundActivity(user, now, `Matched report ${item.id} is now ${input.status.toLowerCase()}`, input.status))
+        }
+        addLostFoundReportUpdateNotifications(data, addNotification, item, user, `Lost & Found ${input.status === 'RETURNED' ? 'item returned' : 'report closed'}`, `${item.id} · ${item.itemName} is now ${input.status.toLowerCase()}.`)
+        for (const claim of item.claimRequests || []) {
+          if (claim.status === 'PENDING') {
+            addNotification(data, {
+              recipientUserId: claim.claimantId,
+              title: 'Lost & Found report updated',
+              message: `${item.id} · ${item.itemName} was updated to ${input.status.toLowerCase()}.`,
+              referenceId: item.id,
+              target: 'lost-found',
+            })
+          }
+        }
+        return item
+      })
+      return json(response, 200, { report: publicLostFoundReport(report, user) })
+    }
+
     if (pathname === '/api/complaints' && request.method === 'GET') {
       if (!canAccess(user, 'complaints')) return reject(response, 403, 'Your role cannot access complaint records.')
       const data = await store.read()
-      const records = data.complaints || []
-      const visible = user.role === ROLES.ADMIN ? records
-        : user.role === ROLES.STAFF ? records.filter((record) => record.assignedTo === user.id)
-          : records.filter((record) => record.userId === user.id)
-      return json(response, 200, { complaints: visible.map((record) => publicComplaint(record, user.role !== ROLES.STUDENT)) })
+      const visible = (data.complaints || [])
+        .map((record) => normalizeComplaint(record, data.users))
+        .filter((record) => canViewComplaint(user, record))
+        .filter((record) => !searchParams.get('status') || record.status === searchParams.get('status'))
+        .filter((record) => !searchParams.get('category') || record.category === searchParams.get('category'))
+        .filter((record) => !searchParams.get('department') || record.department === searchParams.get('department'))
+        .filter((record) => !searchParams.get('role') || record.submitterRole === searchParams.get('role'))
+        .filter((record) => !searchParams.get('date') || record.createdAt.slice(0, 10) === searchParams.get('date'))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      return json(response, 200, {
+        complaints: visible.map((record) => publicComplaint(record)),
+        counts: Object.fromEntries(COMPLAINT_STATUSES.map((status) => [status, visible.filter((record) => record.status === status).length])),
+        categories: COMPLAINT_CATEGORIES,
+      })
     }
 
     if (pathname === '/api/complaints' && request.method === 'POST') {
       if (!canAccess(user, 'complaints')) return reject(response, 403, 'Your role cannot submit complaints.')
       const input = await body(request)
-      const title = safeText(input.title, 120)
-      const description = safeText(input.description, 2000)
-      if (title.length < 3 || description.length < 10) return reject(response, 400, 'Add a subject and a description of at least 10 characters.')
-      const complaint = { id: randomUUID(), title, description, userId: user.id, assignedTo: '', status: 'Open', createdAt: new Date().toISOString() }
-      await store.transact((data) => { data.complaints ??= []; data.complaints.unshift(complaint) })
-      return json(response, 201, { complaint: publicComplaint(complaint, user.role !== ROLES.STUDENT) })
+      const complaint = validateComplaint(input, user)
+      const result = await store.transact(async (data) => {
+        data.complaints ??= []
+        const duplicate = data.complaints.find((record) => record.submitterId === user.id && record.submissionKey === complaint.submissionKey)
+        if (duplicate) return { complaint: normalizeComplaint(duplicate, data.users), created: false }
+
+        const highestIssuedNumber = data.complaints.reduce((highest, record) => {
+          const match = /^CMP-(\d+)$/.exec(record.id)
+          return match ? Math.max(highest, Number(match[1])) : highest
+        }, Number.isSafeInteger(data.complaintCounter) ? data.complaintCounter : 0)
+        data.complaintCounter = highestIssuedNumber + 1
+        complaint.id = `CMP-${String(data.complaintCounter).padStart(6, '0')}`
+        if (complaint.photo) {
+          complaint.photo = await store.saveComplaintPhoto(randomUUID(), complaint.photo.mimeType, complaint.photo.bytes)
+        }
+        const timestamp = new Date().toISOString()
+        complaint.createdAt = timestamp
+        complaint.status = 'SUBMITTED'
+        complaint.assignedTo = null
+        complaint.handledBy = null
+        complaint.activity = [{
+          id: randomUUID(), type: 'status', status: 'SUBMITTED', message: 'Complaint submitted',
+          authorId: user.id, authorName: user.name, authorRole: user.role, createdAt: timestamp,
+        }]
+        data.complaints.unshift(complaint)
+
+        for (const recipient of complaintAuthorities(data.users, complaint)) addNotification(data, {
+          recipientUserId: recipient.id,
+          title: 'New campus complaint',
+          message: `${complaint.category} · ${complaint.title}`,
+          referenceId: complaint.id,
+          target: 'complaints',
+        })
+        return { complaint, created: true }
+      })
+      return json(response, result.created ? 201 : 200, { complaint: publicComplaint(result.complaint), duplicate: !result.created })
     }
 
-    const complaintRoute = pathname.match(/^\/api\/complaints\/([^/]+)$/)
-    if (complaintRoute && request.method === 'PATCH') {
-      if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role) || !canAccess(user, 'complaints')) return reject(response, 403, 'Complaint management is not assigned to your role.')
-      const input = await body(request)
-      if (input.status !== undefined && !['Open', 'In progress', 'Resolved'].includes(input.status)) return reject(response, 400, 'Choose a valid complaint status.')
+    const complaintPhotoRoute = pathname.match(/^\/api\/complaints\/([^/]+)\/photo$/)
+    if (complaintPhotoRoute && request.method === 'GET') {
+      const data = await store.read()
+      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintPhotoRoute[1]))
+      if (!record || !canViewComplaint(user, normalizeComplaint(record, data.users))) return reject(response, 404, 'Complaint photo not found.')
+      const complaint = normalizeComplaint(record, data.users)
+      if (!complaint.photo) return reject(response, 404, 'Complaint photo not found.')
+      let photo
+      try { photo = await store.readComplaintPhoto(complaint.photo.photoId, complaint.photo.mimeType) } catch (error) {
+        if (error.code === 'ENOENT') return reject(response, 404, 'Complaint photo not found.')
+        throw error
+      }
+      response.writeHead(200, {
+        'Cache-Control': 'private, no-store',
+        'Content-Type': complaint.photo.mimeType,
+        'Content-Length': photo.length,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+      })
+      return response.end(photo)
+    }
+
+    const complaintRoute = pathname.match(/^\/api\/complaints\/([^/]+)(?:\/(notes))?$/)
+    if (complaintRoute && request.method === 'GET') {
+      const data = await store.read()
+      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+      if (!record) return reject(response, 404, 'Complaint not found.')
+      const complaint = normalizeComplaint(record, data.users)
+      if (!canViewComplaint(user, complaint)) return reject(response, 404, 'Complaint not found.')
+      return json(response, 200, { complaint: publicComplaint(complaint) })
+    }
+
+    if (complaintRoute && complaintRoute[2] === 'notes' && request.method === 'POST') {
+      if (!isComplaintManager(user)) return reject(response, 403, 'Your role cannot add official complaint updates.')
+      const message = safeText((await body(request)).message, 2000)
+      if (message.length < 2) return reject(response, 400, 'Add an official update of at least two characters.')
       const updated = await store.transact((data) => {
-        const complaint = (data.complaints || []).find((record) => record.id === decodeURIComponent(complaintRoute[1]))
-        if (!complaint) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
-        if (user.role === ROLES.STAFF && complaint.assignedTo && complaint.assignedTo !== user.id) throw Object.assign(new Error('This request is assigned to another staff member.'), { status: 403 })
-        if (input.status) complaint.status = input.status
-        if (input.assignedTo !== undefined) {
-          if (user.role !== ROLES.ADMIN) throw Object.assign(new Error('Only administration can assign complaints.'), { status: 403 })
-          const assignee = data.users.find((candidate) => candidate.id === normalizeUserId(input.assignedTo) && candidate.role === ROLES.STAFF && candidate.active && canAccess(candidate, 'complaints'))
-          if (input.assignedTo && !assignee) throw Object.assign(new Error('Choose an active staff member assigned to complaints.'), { status: 400 })
-          complaint.assignedTo = assignee?.id || ''
-        }
+        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
+        const complaint = normalizeComplaint(record, data.users)
+        if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
+        const now = new Date().toISOString()
+        complaint.activity.push({
+          id: randomUUID(), type: 'note', message,
+          authorId: user.id, authorName: user.name, authorRole: user.role, createdAt: now,
+        })
+        complaint.handledBy = { id: user.id, name: user.name, role: user.role }
+        Object.assign(record, complaint)
+        addComplaintSubmitterNotification(data, addNotification, complaint, 'Complaint update', 'An official added an update to your complaint.')
         return complaint
       })
-      return json(response, 200, { complaint: publicComplaint(updated, true) })
+      return json(response, 201, { complaint: publicComplaint(updated) })
+    }
+
+    if (complaintRoute && !complaintRoute[2] && request.method === 'PATCH') {
+      if (!isComplaintManager(user)) return reject(response, 403, 'Your role cannot manage complaints.')
+      const input = await body(request)
+      const keys = Object.keys(input)
+      if (!keys.length || keys.some((key) => !['status', 'assignedTo'].includes(key))) return reject(response, 400, 'Choose a status or assignment update.')
+      if (input.status !== undefined && !COMPLAINT_STATUSES.includes(input.status)) return reject(response, 400, 'Choose a valid complaint status.')
+      if (input.assignedTo !== undefined && user.role !== ROLES.ADMIN) return reject(response, 403, 'Only Administration can assign complaints.')
+      if (input.assignedTo !== undefined && input.assignedTo !== null && typeof input.assignedTo !== 'string') return reject(response, 400, 'Choose a valid Staff assignment.')
+      const updated = await store.transact((data) => {
+        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
+        const complaint = normalizeComplaint(record, data.users)
+        if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
+        const now = new Date().toISOString()
+        if (input.status !== undefined) {
+          const next = input.status
+          const allowed = {
+            SUBMITTED: ['ACCEPTED', 'REJECTED'],
+            ACCEPTED: ['IN_PROGRESS'],
+            IN_PROGRESS: ['RESOLVED'],
+            RESOLVED: [],
+            REJECTED: [],
+          }
+          if (!allowed[complaint.status]?.includes(next)) throw Object.assign(new Error('That status transition is not allowed.'), { status: 409 })
+          complaint.status = next
+          complaint.activity.push({
+            id: randomUUID(), type: 'status', status: next, message: `Status changed to ${complaintStatusLabel(next)}`,
+            authorId: user.id, authorName: user.name, authorRole: user.role, createdAt: now,
+          })
+          complaint.handledBy = { id: user.id, name: user.name, role: user.role }
+          addComplaintSubmitterNotification(data, addNotification, complaint, `Complaint ${complaintStatusLabel(next)}`, `Your complaint status is now ${complaintStatusLabel(next)}.`)
+        }
+        if (input.assignedTo !== undefined) {
+          const assignee = input.assignedTo
+            ? data.users.find((candidate) => candidate.id === normalizeUserId(input.assignedTo) && candidate.role === ROLES.STAFF && candidate.active && canAccess(candidate, 'complaints'))
+            : null
+          if (input.assignedTo && !assignee) throw Object.assign(new Error('Choose an active Staff member assigned to complaints.'), { status: 400 })
+          complaint.assignedTo = assignee ? { id: assignee.id, name: assignee.name, role: assignee.role } : null
+          complaint.activity.push({
+            id: randomUUID(), type: 'assignment',
+            message: assignee ? `Assigned to ${assignee.name} (${assignee.id})` : 'Complaint assignment removed',
+            authorId: user.id, authorName: user.name, authorRole: user.role, createdAt: now,
+          })
+          if (assignee) addNotification(data, {
+            recipientUserId: assignee.id, title: 'Complaint assigned to you',
+            message: `${complaint.category} · ${complaint.title}`, referenceId: complaint.id, target: 'complaints',
+          })
+        }
+        Object.assign(record, complaint)
+        return complaint
+      })
+      return json(response, 200, { complaint: publicComplaint(updated) })
     }
 
     if (pathname === '/api/sports' && request.method === 'GET') {
@@ -960,6 +1348,181 @@ function safeText(value, maximum) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : ''
 }
 
+function validateLostFoundReport(input, user) {
+  const type = input.type
+  const itemName = safeText(input.itemName, 120)
+  const category = safeText(input.category, 40)
+  const description = safeText(input.description, 2000)
+  const location = safeText(input.location, 180)
+  const itemDate = safeText(input.itemDate, 10)
+  const additionalDetails = safeText(input.additionalDetails, 2000)
+  const submissionKey = safeText(input.submissionKey, 64)
+  if (!LOST_FOUND_TYPES.includes(type)) throw Object.assign(new Error('Choose Lost or Found.'), { status: 400 })
+  if (itemName.length < 2 || !LOST_FOUND_CATEGORIES.includes(category) || description.length < 3 || !location || !validIsoDate(itemDate)) {
+    throw Object.assign(new Error('Complete the item name, category, description, location, and date.'), { status: 400 })
+  }
+  if (!/^[a-f\d-]{36}$/i.test(submissionKey)) throw Object.assign(new Error('Refresh the report form and submit again.'), { status: 400 })
+  return {
+    submissionKey, type, itemName, category, description, location, itemDate, additionalDetails,
+    reporterId: user.id, reporterName: user.name, reporterRole: user.role,
+    department: typeof user.department === 'string' ? user.department : '',
+    photo: validateLostFoundPhoto(input.photo),
+  }
+}
+
+function validateLostFoundPhoto(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || value.length > 1_400_000) throw Object.assign(new Error('Lost & Found photos must be under 1 MB.'), { status: 400 })
+  const match = value.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/)
+  if (!match) throw Object.assign(new Error('Upload a PNG, JPEG, or WebP item photo.'), { status: 400 })
+  const bytes = Buffer.from(match[2], 'base64')
+  if (!bytes.length || bytes.length > LOST_FOUND_PHOTO_BYTES_LIMIT || bytes.toString('base64') !== match[2]) {
+    throw Object.assign(new Error('Lost & Found photos must be valid images under 1 MB.'), { status: 400 })
+  }
+  const signatures = {
+    'image/png': bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+    'image/jpeg': bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+    'image/webp': bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP',
+  }
+  if (!signatures[match[1]]) throw Object.assign(new Error('The uploaded file does not match its image type.'), { status: 400 })
+  return { mimeType: match[1], bytes }
+}
+
+function validIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+    && value <= new Date().toISOString().slice(0, 10)
+}
+
+function lostFoundActor(user) {
+  return { id: user.id, name: user.name, role: user.role }
+}
+
+function lostFoundActivity(user, createdAt, message, status) {
+  const actor = user ? lostFoundActor(user) : { id: 'CAMPUS-SYSTEM', name: 'Campus One', role: 'System' }
+  return { id: randomUUID(), type: 'status', status, message, authorId: actor.id, authorName: actor.name, authorRole: actor.role, createdAt }
+}
+
+function normalizeItemName(value) {
+  return value.toLowerCase().replace(/[^a-z\d]/g, '')
+}
+
+function isLostFoundManager(user, report) {
+  if (!canAccess(user, 'lost-found')) return false
+  if (user.role === ROLES.ADMIN || user.role === ROLES.STAFF) return true
+  if (user.role === ROLES.HOD) return Boolean(user.department) && (report ? report.department === user.department : true)
+  if (user.role === ROLES.SPORTS) return report ? report.category === 'Sports Equipment' : true
+  return false
+}
+
+function canViewLostFound(user, report) {
+  if (report.reporterId === user.id || isLostFoundManager(user, report)) return true
+  if (user.role === ROLES.HOD) return Boolean(user.department) && report.department === user.department
+  if (user.role === ROLES.SPORTS) return report.category === 'Sports Equipment'
+  return canAccess(user, 'lost-found')
+}
+
+function publicLostFoundClaim(claim, user, report, includeDetails = false) {
+  const mayReadDetails = includeDetails || claim.claimantId === user.id || report.reporterId === user.id || isLostFoundManager(user, report)
+  const result = {
+    id: claim.id,
+    claimantId: claim.claimantId,
+    claimantName: claim.claimantName,
+    claimantRole: claim.claimantRole,
+    status: claim.status,
+    createdAt: claim.createdAt,
+    reviewedAt: claim.reviewedAt,
+    reviewedBy: claim.reviewedBy,
+  }
+  if (mayReadDetails) result.details = claim.details
+  return result
+}
+
+function publicLostFoundReport(report, user) {
+  const isOwner = report.reporterId === user.id
+  const canManage = isLostFoundManager(user, report)
+  const maySeeReporter = isOwner || canManage
+  return {
+    id: report.id,
+    type: report.type,
+    itemName: report.itemName,
+    category: report.category,
+    description: report.description,
+    location: report.location,
+    itemDate: report.itemDate,
+    createdAt: report.createdAt,
+    status: report.status,
+    matchedReportId: report.matchedReportId || null,
+    reporterId: maySeeReporter ? report.reporterId : null,
+    reporterName: maySeeReporter ? report.reporterName : null,
+    reporterRole: maySeeReporter ? report.reporterRole : null,
+    department: report.department || '',
+    additionalDetails: isOwner || canManage ? report.additionalDetails : '',
+    photoUrl: report.photo ? `/api/lost-found/${encodeURIComponent(report.id)}/photo` : null,
+    activity: (report.activity || []).map((entry) => {
+      const maySeePrivateUpdates = maySeeReporter || (report.claimRequests || []).some((claim) => claim.claimantId === user.id)
+      const maySeeEntry = maySeePrivateUpdates || entry.type !== 'note'
+      return {
+        ...entry,
+        message: maySeeEntry ? entry.message : 'Official update added',
+        authorId: maySeeReporter ? entry.authorId : null,
+        authorName: maySeeReporter || entry.authorRole === 'System' ? entry.authorName : 'Campus user',
+      }
+    }),
+    claimRequestCount: (report.claimRequests || []).length,
+    claimRequests: (report.claimRequests || [])
+      .filter((claim) => claim.claimantId === user.id || report.reporterId === user.id || canManage)
+      .map((claim) => publicLostFoundClaim(claim, user, report)),
+    lastUpdatedAt: report.activity?.at(-1)?.createdAt || report.createdAt,
+  }
+}
+
+function notifyLostFoundAuthorities(data, addNotification, report) {
+  const authorities = (data.users || []).filter((candidate) => {
+    if (!candidate.active || !canAccess(candidate, 'lost-found')) return false
+    if ([ROLES.ADMIN, ROLES.STAFF].includes(candidate.role)) return true
+    if (candidate.role === ROLES.HOD) return Boolean(report.department) && candidate.department === report.department
+    return candidate.role === ROLES.SPORTS && report.category === 'Sports Equipment'
+  })
+  for (const recipient of authorities) addNotification(data, {
+    recipientUserId: recipient.id,
+    title: 'Lost & Found update',
+    message: `${report.id} · ${report.itemName} (${report.status.toLowerCase().replaceAll('_', ' ')}).`,
+    referenceId: report.id,
+    target: 'lost-found',
+  })
+}
+
+function addLostFoundReportUpdateNotifications(data, addNotification, report, actor, title, message) {
+  const recipientIds = new Set([report.reporterId])
+  if (report.matchedReportId) {
+    const matched = data.lostFoundReports.find((item) => item.id === report.matchedReportId)
+    if (matched) recipientIds.add(matched.reporterId)
+  }
+  for (const claim of report.claimRequests || []) recipientIds.add(claim.claimantId)
+  recipientIds.delete(actor.id)
+  for (const recipientUserId of recipientIds) addNotification(data, {
+    recipientUserId, title, message, referenceId: report.id, target: 'lost-found',
+  })
+}
+
+function rejectPendingLostFoundClaims(data, report, exceptClaimId, actor, now, addNotification, reason) {
+  for (const claim of report.claimRequests || []) {
+    if (claim.id === exceptClaimId || claim.status !== 'PENDING') continue
+    claim.status = 'REJECTED'
+    claim.reviewedAt = now
+    claim.reviewedBy = lostFoundActor(actor)
+    report.activity.push(lostFoundActivity(actor, now, 'Pending claim request closed', report.status))
+    addNotification(data, {
+      recipientUserId: claim.claimantId,
+      title: 'Lost & Found claim closed',
+      message: `${report.id} · ${report.itemName}: ${reason}`,
+      referenceId: report.id,
+      target: 'lost-found',
+    })
+  }
+}
+
 function validateRecord(input) {
   const title = safeText(input.title, 120)
   const description = safeText(input.description, 1200)
@@ -987,9 +1550,136 @@ function campusRecords(data, collection) {
   return data.campus[collection]
 }
 
-function publicComplaint(complaint, includeIdentity) {
-  const { id, title, description, assignedTo, status, createdAt, userId } = complaint
-  return { id, title, description, status, createdAt, ...(includeIdentity ? { userId, assignedTo } : {}) }
+function validateComplaint(input, user) {
+  const title = safeText(input.title, 120)
+  const description = safeText(input.description, 5000)
+  const category = safeText(input.category, 40)
+  const submissionKey = safeText(input.submissionKey, 64)
+  if (title.length < 3 || description.length < 10) throw Object.assign(new Error('Add a title and a description of at least 10 characters.'), { status: 400 })
+  if (!COMPLAINT_CATEGORIES.includes(category)) throw Object.assign(new Error('Choose a valid complaint category.'), { status: 400 })
+  if (!/^[a-f\d-]{36}$/i.test(submissionKey)) throw Object.assign(new Error('Refresh the form and submit again.'), { status: 400 })
+
+  let photo = null
+  if (input.photo !== undefined && input.photo !== null && input.photo !== '') {
+    if (typeof input.photo !== 'string' || input.photo.length > PHOTO_LIMIT) throw Object.assign(new Error('Complaint photos must be under 1 MB.'), { status: 400 })
+    const match = input.photo.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/)
+    if (!match) throw Object.assign(new Error('Upload a PNG, JPEG, or WebP complaint photo.'), { status: 400 })
+    const bytes = Buffer.from(match[2], 'base64')
+    if (!bytes.length || bytes.length > COMPLAINT_PHOTO_BYTES_LIMIT || bytes.toString('base64') !== match[2]) {
+      throw Object.assign(new Error('Complaint photos must be a valid image under 1 MB.'), { status: 400 })
+    }
+    const signatures = {
+      'image/png': bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+      'image/jpeg': bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+      'image/webp': bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP',
+    }
+    if (!signatures[match[1]]) throw Object.assign(new Error('The uploaded file does not match its image type.'), { status: 400 })
+    photo = { mimeType: match[1], bytes }
+  }
+
+  return {
+    submissionKey, title, description, category, photo,
+    submitterId: user.id,
+    submitterName: user.name,
+    submitterRole: user.role,
+    department: typeof user.department === 'string' ? user.department : '',
+  }
+}
+
+function normalizeComplaint(complaint, users = []) {
+  const submitterId = complaint.submitterId || complaint.userId || ''
+  const submitter = users.find((user) => user.id === submitterId)
+  const legacyStatuses = { Open: 'SUBMITTED', Accepted: 'ACCEPTED', 'In progress': 'IN_PROGRESS', Resolved: 'RESOLVED', Rejected: 'REJECTED' }
+  const status = COMPLAINT_STATUSES.includes(complaint.status) ? complaint.status : legacyStatuses[complaint.status] || 'SUBMITTED'
+  const createdAt = complaint.createdAt || new Date(0).toISOString()
+  const assignedTo = typeof complaint.assignedTo === 'string'
+    ? (users.find((user) => user.id === complaint.assignedTo) ? {
+      id: complaint.assignedTo,
+      name: users.find((user) => user.id === complaint.assignedTo).name,
+      role: ROLES.STAFF,
+    } : null)
+    : complaint.assignedTo || null
+  return {
+    ...complaint,
+    submitterId,
+    submitterName: complaint.submitterName || submitter?.name || 'Campus user',
+    submitterRole: complaint.submitterRole || submitter?.role || 'Student',
+    department: complaint.department || submitter?.department || '',
+    category: COMPLAINT_CATEGORIES.includes(complaint.category) ? complaint.category : 'Other',
+    status,
+    createdAt,
+    assignedTo,
+    handledBy: complaint.handledBy || null,
+    photo: complaint.photo?.photoId ? complaint.photo : null,
+    activity: Array.isArray(complaint.activity) && complaint.activity.length
+      ? complaint.activity
+      : [{
+        id: `legacy-${complaint.id}`, type: 'status', status: 'SUBMITTED', message: 'Complaint submitted',
+        authorId: submitterId, authorName: complaint.submitterName || submitter?.name || 'Campus user',
+        authorRole: complaint.submitterRole || submitter?.role || 'Student', createdAt,
+      }],
+  }
+}
+
+function publicComplaint(complaint) {
+  const {
+    id, submitterId, submitterName, submitterRole, department, category, title,
+    description, status, createdAt, assignedTo, handledBy, activity, photo,
+  } = complaint
+  return {
+    id, submitterId, submitterName, submitterRole, department, category, title,
+    description, status, createdAt, assignedTo, handledBy, activity,
+    photoUrl: photo ? `/api/complaints/${encodeURIComponent(id)}/photo` : null,
+    lastUpdatedAt: activity.at(-1)?.createdAt || createdAt,
+  }
+}
+
+function complaintStatusLabel(status) {
+  return ({ SUBMITTED: 'Submitted', ACCEPTED: 'Accepted', IN_PROGRESS: 'In Progress', RESOLVED: 'Resolved', REJECTED: 'Rejected' })[status] || status
+}
+
+function isComplaintManager(user) {
+  return [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(user.role) && canAccess(user, 'complaints')
+}
+
+function canManageComplaint(user, complaint) {
+  if (!isComplaintManager(user)) return false
+  if (user.role === ROLES.ADMIN) return true
+  if (user.role === ROLES.HOD) return Boolean(user.department) && complaint.department === user.department
+  if (user.role === ROLES.SPORTS) return complaint.category === 'Sports'
+  if (user.role === ROLES.STAFF) {
+    if (complaint.assignedTo && complaint.assignedTo.id !== user.id) return false
+    return complaint.assignedTo?.id === user.id || Boolean(user.department) && complaint.department === user.department
+  }
+  return false
+}
+
+function canViewComplaint(user, complaint) {
+  return complaint.submitterId === user.id || canManageComplaint(user, complaint)
+}
+
+function complaintAuthorities(users, complaint) {
+  const active = users.filter((candidate) => candidate.active)
+  const authorities = active.filter((candidate) => candidate.role === ROLES.ADMIN)
+  if (complaint.category === 'Sports') {
+    authorities.push(...active.filter((candidate) => candidate.role === ROLES.SPORTS))
+  } else if (complaint.department) {
+    authorities.push(...active.filter((candidate) =>
+      candidate.department === complaint.department && [ROLES.HOD, ROLES.STAFF].includes(candidate.role)))
+  } else {
+    authorities.push(...active.filter((candidate) => [ROLES.HOD, ROLES.STAFF].includes(candidate.role)))
+  }
+  return [...new Map(authorities.map((candidate) => [candidate.id, candidate])).values()]
+}
+
+function addComplaintSubmitterNotification(data, addNotification, complaint, title, message) {
+  addNotification(data, {
+    recipientUserId: complaint.submitterId,
+    title,
+    message,
+    referenceId: complaint.id,
+    target: 'complaints',
+  })
 }
 
 function publicFoodOrder(order) {

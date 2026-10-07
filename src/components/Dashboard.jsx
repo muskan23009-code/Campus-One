@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Check,
-  ChevronRight, CircleHelp, Clock3, Compass, Flame, GraduationCap,
-  HeartPulse, MapPin, Sparkles, Utensils, Waves,
+  ChevronRight, Clock3, Compass, Flame, GraduationCap,
+  HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils, Waves,
 } from 'lucide-react'
 import { campusPlaces, notices } from '../data/campusData'
 import { api } from '../api/client'
@@ -82,7 +82,8 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 
           <button className="event-panel" onClick={() => onNavigate('events')}><div className="event-image" /><div className="event-info"><span className="event-label"><CalendarDays size={12} /> COMING UP ON CAMPUS</span><strong>Ideas look better<br />when shared.</strong><span className="event-name">Design week · Opening night</span><span className="event-time">THU, OCT 8 <i /> 5:00 PM <i /> MAIN AUDITORIUM</span></div><span className="event-arrow"><ArrowUpRight size={15} /></span></button>
 
-          <button className="feedback-panel" onClick={() => onNavigate('complaints')}><span className="feedback-icon"><CircleHelp size={18} /></span><span className="feedback-text"><strong>Something on your mind?</strong><span>We read every suggestion.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
+          <button className="feedback-panel lost-found-dashboard-link" onClick={() => onNavigate('lost-found')}><span className="feedback-icon"><PackageSearch size={18} /></span><span className="feedback-text"><strong>Lost & Found</strong><span>Report or search for a campus item.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
+          <button className="feedback-panel" onClick={() => onNavigate('complaints')}><span className="feedback-icon"><MessageSquareWarning size={18} /></span><span className="feedback-text"><strong>Complaint & Issue Tracker</strong><span>Submit an issue and track updates.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
 
           {adminView && <div className="admin-summary"><span className="section-eyebrow">OPERATIONS SNAPSHOT</span><strong>Campus services are running smoothly.</strong><span>2 requests need attention · 94% availability <ArrowRight size={12} /></span></div>}
         </aside>

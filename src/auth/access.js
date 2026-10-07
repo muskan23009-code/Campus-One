@@ -38,7 +38,7 @@ export function canSeePage(user, page) {
   if (page === 'overview' || page === 'profile' || page === 'unauthorized' || page === 'not-found') return true
   if (user.role === APP_ROLES.STUDENT) return STUDENT_ALLOWED_MODULES.includes(page)
   if (user.role === APP_ROLES.STAFF) return [...STAFF_DEFAULT_MODULES, ...(user.modules || [])].includes(page)
-  if (user.role === APP_ROLES.HOD) return ['overview', 'notices', 'department-requests', 'department-students'].includes(page)
-  if (user.role === APP_ROLES.SPORTS) return ['notices', 'events', 'sports', 'sports-management'].includes(page)
+  if (user.role === APP_ROLES.HOD) return ['overview', 'notices', 'complaints', 'lost-found', 'department-requests', 'department-students'].includes(page)
+  if (user.role === APP_ROLES.SPORTS) return ['notices', 'complaints', 'lost-found', 'events', 'sports', 'sports-management'].includes(page)
   return false
 }
