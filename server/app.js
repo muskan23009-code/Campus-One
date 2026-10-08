@@ -1256,7 +1256,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         })
         return removed ? json(response, 200, { ok: true }) : reject(response, 404, 'Sports record not found.')
       }
-      const patch = validateSportsRecord(await body(request))
+      const existingRecord = (await store.read()).sports ?? [...DEFAULT_SPORTS_DATA]
+      const patch = validateSportsRecord(await body(request), existingRecord.find((candidate) => candidate.id === id) || {})
       const updated = await store.transact((data) => {
         data.sports ??= [...DEFAULT_SPORTS_DATA]
         const record = data.sports.find((candidate) => candidate.id === id)
@@ -1335,10 +1336,13 @@ function safeText(value, maximum) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : ''
 }
 
-function validateRecord(input) {
-  const title = safeText(input.title, 120)
-  const description = safeText(input.description, 1200)
-  if (title.length < 2 || description.length < 3) throw Object.assign(new Error('Add a title and a description for this campus record.'), { status: 400 })
+function validateRecord(input, existing = {}) {
+  const title = safeText(input.title ?? existing.title ?? '', 120)
+  const description = safeText(input.description ?? existing.description ?? '', 1200)
+  const hasTitle = input.title !== undefined || existing.title !== undefined
+  const hasDescription = input.description !== undefined || existing.description !== undefined
+  if ((hasTitle || !existing.title) && title.length < 2) throw Object.assign(new Error('Add a title and a description for this campus record.'), { status: 400 })
+  if ((hasDescription || !existing.description) && description.length < 3) throw Object.assign(new Error('Add a title and a description for this campus record.'), { status: 400 })
   return { title, description }
 }
 
@@ -1384,7 +1388,7 @@ function validateEmergencyContact(input, existing = {}) {
 
 function validateCampusCollectionRecord(collection, input, existing = {}) {
   if (collection === 'emergency') return validateEmergencyContact(input, existing)
-  return validateRecord(input)
+  return validateRecord(input, existing)
 }
 
 function isRecordActive(record) {
@@ -1465,11 +1469,15 @@ const { id, title, message, referenceId, target, readAt, createdAt } = notificat
 return { id, title, message, referenceId, target, readAt, createdAt }
 }
 
-function validateSportsRecord(input) {
-  const kind = safeText(input.kind, 40)
-  const title = safeText(input.title, 100)
-  const description = safeText(input.description, 1000)
-  if (!['Team', 'Player', 'Sports event', 'Participation', 'Equipment', 'Announcement', 'Information'].includes(kind)) throw Object.assign(new Error('Choose a valid sports information category.'), { status: 400 })
-  if (title.length < 2 || description.length < 3) throw Object.assign(new Error('Add a title and details for this sports record.'), { status: 400 })
-  return { kind, title, description, active: input.active !== false }
+function validateSportsRecord(input, existing = {}) {
+  const kind = safeText(input.kind ?? existing.kind ?? '', 40)
+  const title = safeText(input.title ?? existing.title ?? '', 100)
+  const description = safeText(input.description ?? existing.description ?? '', 1000)
+  const hasKind = input.kind !== undefined || existing.kind !== undefined
+  const hasTitle = input.title !== undefined || existing.title !== undefined
+  const hasDescription = input.description !== undefined || existing.description !== undefined
+  if ((hasKind || !existing.kind) && !['Team', 'Player', 'Sports event', 'Participation', 'Equipment', 'Announcement', 'Information'].includes(kind)) throw Object.assign(new Error('Choose a valid sports information category.'), { status: 400 })
+  if ((hasTitle || !existing.title) && title.length < 2) throw Object.assign(new Error('Add a title and details for this sports record.'), { status: 400 })
+  if ((hasDescription || !existing.description) && description.length < 3) throw Object.assign(new Error('Add a title and details for this sports record.'), { status: 400 })
+  return { kind, title, description, active: input.active !== undefined ? input.active !== false : existing.active !== false }
 }
