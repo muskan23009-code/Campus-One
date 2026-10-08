@@ -7,9 +7,11 @@ import {
   verifySession,
 } from './auth.js'
 import {
-  CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_SPORTS_DATA, DEPARTMENTS,
-  MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, STAFF_MODULES,
-  STUDENT_MODULES, USER_ID_FORMATS, canAccess, modulesForUser,
+  CANTEEN_CONTACT, CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_CANTEEN_CATALOG,
+  DEFAULT_SPORTS_DATA, DEPARTMENTS, EMERGENCY_CONTACT_CATEGORIES,
+  EMERGENCY_CONTACT_CATEGORY_VALUES, MANAGEMENT_COLLECTIONS, ROLE_VALUES,
+  ROLES, STAFF_MODULES, STUDENT_MODULES, USER_ID_FORMATS, canAccess,
+  modulesForUser,
 } from './policy.js'
 
 const BODY_LIMIT = 2_000_000
@@ -189,10 +191,13 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
   }
 
   function createApprovedUser(application, data) {
+    const role = String(application.role || '').trim()
+    if (!USER_ID_FORMATS[role]) throw Object.assign(new Error('Select a valid user role.'), { status: 400 })
+    const assignedId = userIdForRole(role, data)
     const user = {
       ...application.fields,
-      id: userIdForRole(application.role, data),
-      role: application.role,
+      id: assignedId,
+      role,
       active: true,
       modules: [],
       credentials: application.credentials,
@@ -276,6 +281,110 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         referenceId: application.id,
         target: 'department-requests',
       })
+    }
+  }
+
+  function parseCanteenVariant(inputValue, item) {
+    const value = String(inputValue || '').trim().toUpperCase()
+    if (value === 'HALF' || value === 'FULL') return value
+    if (item?.half_price !== null && item?.half_price !== undefined && item?.full_price !== null && item?.full_price !== undefined) return 'FULL'
+    if (item?.half_price !== null && item?.half_price !== undefined) return 'HALF'
+    return 'FULL'
+  }
+
+  function foodItemPrice(item, variant) {
+    const candidate = item || {}
+    const normalizedVariant = parseCanteenVariant(variant, candidate)
+    if (candidate.price !== null && candidate.price !== undefined && candidate.price !== '') return Number(candidate.price)
+    if (normalizedVariant === 'HALF' && candidate.half_price !== null && candidate.half_price !== undefined) return Number(candidate.half_price)
+    if (normalizedVariant === 'FULL' && candidate.full_price !== null && candidate.full_price !== undefined) return Number(candidate.full_price)
+    if (candidate.full_price !== null && candidate.full_price !== undefined) return Number(candidate.full_price)
+    if (candidate.half_price !== null && candidate.half_price !== undefined) return Number(candidate.half_price)
+    return Number(candidate.price || 0)
+  }
+
+  function activeCanteenItems(data) {
+    data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+    return (data.foodItems || []).filter((item) => item.available !== false)
+  }
+
+  function publicFoodItem(item) {
+    return {
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      menu_type: item.menu_type,
+      price: item.price ?? null,
+      half_price: item.half_price ?? null,
+      full_price: item.full_price ?? null,
+      image: item.image || '',
+      available: item.available !== false,
+      preparation_time: Number(item.preparation_time || 0),
+      created_at: item.created_at || null,
+      updated_at: item.updated_at || null,
+    }
+  }
+
+  function publicCartSummary(cart) {
+    const items = cart.items || []
+    const subtotal = items.reduce((total, item) => total + Number(item.line_total || 0), 0)
+    return {
+      id: cart.id,
+      user_id: cart.user_id,
+      created_at: cart.created_at,
+      updated_at: cart.updated_at,
+      subtotal,
+      total: subtotal,
+      item_count: items.reduce((count, item) => count + Number(item.quantity || 0), 0),
+      items: items.map((item) => ({
+        id: item.id,
+        food_item_id: item.food_item_id,
+        food_name: item.food_name,
+        category: item.category,
+        price: item.price,
+        variant: item.variant,
+        quantity: item.quantity,
+        line_total: item.line_total,
+      })),
+    }
+  }
+
+  function addCanteenNotification(data, payload) {
+    data.notifications ??= []
+    const notification = {
+      id: randomUUID(),
+      recipientUserId: payload.recipientUserId || '',
+      recipientRequestId: payload.recipientRequestId || '',
+      title: payload.title,
+      message: payload.message,
+      referenceId: payload.referenceId || '',
+      target: payload.target || 'canteen',
+      readAt: null,
+      createdAt: new Date().toISOString(),
+      type: payload.type || 'canteen',
+      orderId: payload.orderId || '',
+    }
+    data.notifications.unshift(notification)
+    return notification
+  }
+
+  function canChangeOrderStatus(currentStatus, nextStatus) {
+    const allowed = {
+      PLACED: ['ACCEPTED', 'REJECTED', 'CANCELLED'],
+      ACCEPTED: ['PREPARING', 'REJECTED'],
+      PREPARING: ['READY'],
+      READY: ['COMPLETED'],
+      COMPLETED: [],
+      REJECTED: [],
+      CANCELLED: [],
+    }
+    return allowed[currentStatus]?.includes(nextStatus) ?? false
+  }
+
+  function ensureValidPaymentStatus(value) {
+    if (!['PENDING', 'PAYMENT_SUBMITTED', 'PAID', 'PAYMENT_FAILED', 'REFUNDED'].includes(value)) {
+      throw Object.assign(new Error('Choose a valid payment status.'), { status: 400 })
     }
   }
 
@@ -571,15 +680,186 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return json(response, 200, { user: publicUser(updated), modules: modulesForUser(updated) })
     }
 
-    if (pathname === '/api/food/orders' && request.method === 'GET') {
-      if (![ROLES.STUDENT, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Only students and Administration can access canteen orders.')
+    if (pathname === '/api/canteen/menu' && request.method === 'GET') {
       const data = await store.read()
-      const orders = data.foodOrders || []
-      const visible = user.role === ROLES.ADMIN ? orders : orders.filter((order) => order.userId === user.id)
-      return json(response, 200, { orders: visible.map(publicFoodOrder) })
+      const items = (data.foodItems || structuredClone(DEFAULT_CANTEEN_CATALOG)).filter((item) => item.available !== false)
+      return json(response, 200, { items: items.map(publicFoodItem), contact: CANTEEN_CONTACT })
     }
 
-    if (pathname === '/api/food/orders' && request.method === 'POST') {
+    if ((pathname === '/api/canteen/cart' || pathname === '/api/food/cart') && request.method === 'GET') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student cart access is required.')
+      const data = await store.read()
+      const cart = (data.carts || []).find((entry) => entry.user_id === user.id)
+      return json(response, 200, { cart: cart ? publicCartSummary(cart) : { id: '', user_id: user.id, created_at: null, updated_at: null, total: 0, subtotal: 0, item_count: 0, items: [] } })
+    }
+
+    if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      const input = await body(request)
+      const foodItemId = String(input.food_item_id || input.foodItemId || '').trim()
+      if (!foodItemId) return reject(response, 400, 'Select a food item to add.')
+      if (!Number.isInteger(Number(input.quantity ?? 1)) || Number(input.quantity ?? 1) <= 0) return reject(response, 400, 'Quantity must be a positive integer.')
+      const result = await store.transact((data) => {
+        data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+        const item = data.foodItems.find((candidate) => candidate.id === foodItemId)
+        if (!item) throw Object.assign(new Error('Food item not found.'), { status: 404 })
+        if (item.available === false) throw Object.assign(new Error('This item is unavailable right now.'), { status: 409 })
+        const variant = parseCanteenVariant(input.variant || input.itemVariant, item)
+        const price = foodItemPrice(item, variant)
+        data.carts ??= []
+        let cart = data.carts.find((entry) => entry.user_id === user.id)
+        if (!cart) {
+          cart = { id: randomUUID(), user_id: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), items: [] }
+          data.carts.push(cart)
+        }
+        const existing = cart.items.find((entry) => entry.food_item_id === foodItemId && entry.variant === variant)
+        const quantity = Number(input.quantity)
+        if (existing) {
+          existing.quantity += quantity
+          existing.line_total = existing.price * existing.quantity
+        } else {
+          cart.items.push({
+            id: randomUUID(), food_item_id: foodItemId, food_name: item.name, category: item.category,
+            variant, price, quantity, line_total: price * quantity,
+          })
+        }
+        cart.updated_at = new Date().toISOString()
+        return { cart: publicCartSummary(cart) }
+      })
+      return json(response, 201, result)
+    }
+
+    if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'PATCH') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      const input = await body(request)
+      const itemId = String(input.id || input.itemId || '').trim()
+      if (!itemId) return reject(response, 400, 'Choose a cart item to update.')
+      const result = await store.transact((data) => {
+        data.carts ??= []
+        const cart = data.carts.find((entry) => entry.user_id === user.id)
+        if (!cart) throw Object.assign(new Error('Your cart is empty.'), { status: 404 })
+        const entry = cart.items.find((candidate) => candidate.id === itemId)
+        if (!entry) throw Object.assign(new Error('Cart item not found.'), { status: 404 })
+        if (input.quantity !== undefined) {
+          if (!Number.isInteger(Number(input.quantity)) || Number(input.quantity) <= 0) throw Object.assign(new Error('Quantity must be a positive integer.'), { status: 400 })
+          entry.quantity = Number(input.quantity)
+        }
+        if (input.variant !== undefined) {
+          const item = (data.foodItems || structuredClone(DEFAULT_CANTEEN_CATALOG)).find((candidate) => candidate.id === entry.food_item_id)
+          if (!item) throw Object.assign(new Error('Food item not found.'), { status: 404 })
+          entry.variant = parseCanteenVariant(input.variant, item)
+        }
+        entry.price = Number(entry.price || 0)
+        entry.line_total = entry.price * entry.quantity
+        cart.updated_at = new Date().toISOString()
+        return { cart: publicCartSummary(cart) }
+      })
+      return json(response, 200, result)
+    }
+
+    if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'DELETE') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      const input = await body(request)
+      const itemId = String(input.id || input.itemId || '').trim()
+      if (!itemId) return reject(response, 400, 'Choose a cart item to remove.')
+      const result = await store.transact((data) => {
+        data.carts ??= []
+        const cart = data.carts.find((entry) => entry.user_id === user.id)
+        if (!cart) throw Object.assign(new Error('Your cart is empty.'), { status: 404 })
+        const index = cart.items.findIndex((entry) => entry.id === itemId)
+        if (index === -1) throw Object.assign(new Error('Cart item not found.'), { status: 404 })
+        cart.items.splice(index, 1)
+        cart.updated_at = new Date().toISOString()
+        return { cart: publicCartSummary(cart) }
+      })
+      return json(response, 200, result)
+    }
+
+    if ((pathname === '/api/canteen/checkout' || pathname === '/api/food/checkout') && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can place canteen orders.')
+      const input = await body(request)
+      const fullName = safeText(input.full_name || input.fullName || user.name, 120)
+      const contactNumber = safeText(input.contact_number || input.contactNumber || user.mobile || '', 24)
+      const course = safeText(input.course || user.course || '', 100)
+      const department = safeText(input.department || user.department || '', 100)
+      const paymentMethod = String((input.payment_method || input.paymentMethod || 'OFFLINE')).trim().toUpperCase()
+      if (!fullName || !contactNumber || !course || !department) return reject(response, 400, 'Full name, contact number, course, and department are required.')
+      if (!/^\+?[\d\s().-]{7,20}$/.test(contactNumber)) return reject(response, 400, 'Enter a valid contact number.')
+      if (!['UPI', 'OFFLINE', 'ONLINE', 'ONLINE_UPI', 'PAY_AT_CANTEEN'].includes(paymentMethod) && !['UPI', 'OFFLINE'].includes(paymentMethod)) return reject(response, 400, 'Choose a valid payment method.')
+      const normalizedPaymentMethod = paymentMethod === 'ONLINE' || paymentMethod === 'ONLINE_UPI' ? 'UPI' : paymentMethod === 'PAY_AT_CANTEEN' ? 'OFFLINE' : paymentMethod
+      const result = await store.transact((data) => {
+        data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+        data.carts ??= []
+        const cart = data.carts.find((entry) => entry.user_id === user.id)
+        if (!cart || !cart.items.length) throw Object.assign(new Error('Your cart is empty.'), { status: 400 })
+        const orderItems = []
+        let subtotal = 0
+        for (const entry of cart.items) {
+          const item = data.foodItems.find((candidate) => candidate.id === entry.food_item_id)
+          if (!item || item.available === false) throw Object.assign(new Error(`${entry.food_name || 'This food item'} is unavailable.`), { status: 409 })
+          const priceSnapshot = Number(entry.price || 0)
+          const quantity = Number(entry.quantity || 0)
+          const lineSubtotal = priceSnapshot * quantity
+          subtotal += lineSubtotal
+          orderItems.push({
+            id: randomUUID(), food_item_id: entry.food_item_id, food_name_snapshot: entry.food_name, variant: entry.variant, price_snapshot: priceSnapshot, quantity, subtotal: lineSubtotal,
+          })
+        }
+        const order = {
+          id: randomUUID(), order_number: `CM-${String(Math.floor(Date.now() / 1000) % 900000 + 1000)}`,
+          student_id: user.id, student_name: fullName, contact_number: contactNumber, course, department,
+          subtotal, total_amount: subtotal, payment_method: normalizedPaymentMethod,
+          payment_status: 'PENDING', payment_submitted_at: null, payment_verified_at: null, payment_verified_by: null,
+          order_status: 'PLACED', estimated_ready_time: null, rejection_reason: null, staff_note: '',
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(), accepted_at: null,
+          preparing_at: null, ready_at: null, completed_at: null, cancelled_at: null, items: orderItems,
+        }
+        data.orders ??= []
+        data.orders.unshift(order)
+        cart.items = []
+        cart.updated_at = new Date().toISOString()
+        const orderNotification = addCanteenNotification(data, {
+          recipientUserId: '',
+          title: '🔔 NEW CANTEEN ORDER',
+          message: `Order #${order.order_number}\nStudent: ${fullName}\nCourse: ${course}\nDepartment: ${department}\nItems: ${orderItems.map((item) => `${item.food_name_snapshot} × ${item.quantity}`).join(', ')}\nTotal: ₹${subtotal}\nPayment: ${normalizedPaymentMethod}`,
+          referenceId: order.id,
+          target: 'canteen-orders',
+          type: 'staff',
+          orderId: order.id,
+        })
+        addNotification(data, {
+          recipientUserId: user.id,
+          title: 'Order placed',
+          message: `Your order #${order.order_number} has been placed successfully.`,
+          referenceId: order.id,
+          target: 'order',
+        })
+        return { order: publicOrder(order), notification: orderNotification }
+      })
+      return json(response, 201, result)
+    }
+
+    if ((pathname === '/api/canteen/orders' || pathname === '/api/food/orders') && request.method === 'GET') {
+      if (![ROLES.STUDENT, ROLES.ADMIN, ROLES.STAFF].includes(user.role)) return reject(response, 403, 'Only students and canteen staff can access canteen orders.')
+      const data = await store.read()
+      const combined = [...(data.orders || []), ...(data.foodOrders || [])]
+      const unique = []
+      const seen = new Set()
+      for (const order of combined) {
+        const key = order.id || order.orderNumber || order.order_number
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        unique.push(order)
+      }
+      const visible = user.role === ROLES.ADMIN || user.role === ROLES.STAFF
+        ? unique
+        : unique.filter((order) => (order.student_id ?? order.userId) === user.id)
+      return json(response, 200, {
+        orders: visible.map((order) => Object.hasOwn(order, 'orderNumber') || Object.hasOwn(order, 'status') && !Object.hasOwn(order, 'order_status') ? publicFoodOrder(order) : publicOrder(order)),
+      })
+    }
+
+    if ((pathname === '/api/canteen/orders' || pathname === '/api/food/orders') && request.method === 'POST') {
       if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can place canteen pre-orders.')
       const input = await body(request)
       if (!Object.hasOwn(CANTEEN_MENU, input.meal) || !CANTEEN_MENU[input.meal].includes(input.item)) return reject(response, 400, 'Choose an available item from the selected campus menu.')
@@ -588,25 +868,190 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         userId: user.id, meal: input.meal, item: input.item, status: 'Placed',
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       }
-      await store.transact((data) => { data.foodOrders ??= []; data.foodOrders.unshift(order) })
+      await store.transact((data) => {
+        data.foodOrders ??= []
+        data.foodOrders.unshift(order)
+        if (pathname === '/api/canteen/orders') {
+          data.orders ??= []
+          const legacyOrder = {
+            id: order.id,
+            order_number: order.orderNumber,
+            student_id: user.id,
+            student_name: user.name,
+            contact_number: user.mobile || '',
+            course: user.course || '',
+            department: user.department || '',
+            subtotal: 0,
+            total_amount: 0,
+            payment_method: 'OFFLINE',
+            payment_status: 'PENDING',
+            payment_submitted_at: null,
+            payment_verified_at: null,
+            payment_verified_by: null,
+            order_status: 'PLACED',
+            estimated_ready_time: null,
+            rejection_reason: null,
+            staff_note: '',
+            created_at: order.createdAt,
+            updated_at: order.updatedAt,
+            accepted_at: null,
+            preparing_at: null,
+            ready_at: null,
+            completed_at: null,
+            cancelled_at: null,
+            items: [],
+          }
+          if (!data.orders.some((candidate) => candidate.id === legacyOrder.id)) data.orders.unshift(legacyOrder)
+        }
+      })
       return json(response, 201, { order: publicFoodOrder(order) })
     }
 
-    const foodOrderRoute = pathname.match(/^\/api\/food\/orders\/([^/]+)$/)
-    if (foodOrderRoute && request.method === 'PATCH') {
+    const canteenOrderRoute = pathname.match(/^\/api\/canteen\/orders\/([^/]+)$/)
+    if (canteenOrderRoute && request.method === 'PATCH') {
+      const orderId = decodeURIComponent(canteenOrderRoute[1])
       const input = await body(request)
-      const allowedStatus = ['Placed', 'Preparing', 'Ready', 'Collected', 'Cancelled']
-      if (!allowedStatus.includes(input.status)) return reject(response, 400, 'Choose a valid order status.')
       const order = await store.transact((data) => {
-        const existing = (data.foodOrders || []).find((candidate) => candidate.id === decodeURIComponent(foodOrderRoute[1]))
-        if (!existing) throw Object.assign(new Error('Canteen order not found.'), { status: 404 })
-        if (user.role === ROLES.ADMIN) existing.status = input.status
-        else if (user.role === ROLES.STUDENT && existing.userId === user.id && input.status === 'Cancelled' && ['Placed', 'Preparing'].includes(existing.status)) existing.status = 'Cancelled'
-        else throw Object.assign(new Error('You cannot change this order.'), { status: 403 })
-        existing.updatedAt = new Date().toISOString()
+        data.orders ??= []
+        const existing = (data.orders || []).find((candidate) => candidate.id === orderId)
+        if (!existing) throw Object.assign(new Error('Order not found.'), { status: 404 })
+        const nextStatus = String(input.order_status || input.status || existing.order_status).trim().toUpperCase()
+        const nextPaymentStatus = input.payment_status !== undefined ? String(input.payment_status).trim().toUpperCase() : existing.payment_status
+        if (nextStatus && nextStatus !== existing.order_status) {
+          if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role) && !(user.role === ROLES.STUDENT && existing.student_id === user.id && nextStatus === 'CANCELLED')) {
+            throw Object.assign(new Error('You cannot change this order status.'), { status: 403 })
+          }
+          if (!canChangeOrderStatus(existing.order_status, nextStatus)) throw Object.assign(new Error(`Invalid order status transition: ${existing.order_status} → ${nextStatus}`), { status: 400 })
+          existing.order_status = nextStatus
+          if (nextStatus === 'ACCEPTED') existing.accepted_at = new Date().toISOString()
+          if (nextStatus === 'PREPARING') existing.preparing_at = new Date().toISOString()
+          if (nextStatus === 'READY') existing.ready_at = new Date().toISOString()
+          if (nextStatus === 'COMPLETED') existing.completed_at = new Date().toISOString()
+          if (nextStatus === 'CANCELLED' || nextStatus === 'REJECTED') existing.cancelled_at = new Date().toISOString()
+          if (input.rejection_reason !== undefined) existing.rejection_reason = safeText(String(input.rejection_reason), 500)
+          if (input.estimated_ready_time !== undefined) existing.estimated_ready_time = input.estimated_ready_time
+          if (input.staff_note !== undefined) existing.staff_note = safeText(String(input.staff_note), 500)
+        }
+        if (nextPaymentStatus && nextPaymentStatus !== existing.payment_status) {
+          ensureValidPaymentStatus(nextPaymentStatus)
+          if (user.role === ROLES.STUDENT && existing.student_id === user.id && nextPaymentStatus === 'PAYMENT_SUBMITTED') {
+            existing.payment_status = nextPaymentStatus
+            existing.payment_submitted_at = new Date().toISOString()
+          } else if ([ROLES.ADMIN, ROLES.STAFF].includes(user.role)) {
+            existing.payment_status = nextPaymentStatus
+            if (nextPaymentStatus === 'PAID') existing.payment_verified_at = new Date().toISOString(); existing.payment_verified_by = user.id
+            if (nextPaymentStatus === 'PAYMENT_FAILED') existing.payment_verified_at = null
+          } else {
+            throw Object.assign(new Error('You cannot change payment status.'), { status: 403 })
+          }
+        }
+        existing.updated_at = new Date().toISOString()
         return existing
       })
-      return json(response, 200, { order: publicFoodOrder(order) })
+      return json(response, 200, { order: publicOrder(order) })
+    }
+
+    const canteenItemRoute = pathname.match(/^\/api\/(?:canteen|food)\/items\/([^/]+)$/)
+    if (canteenItemRoute && request.method === 'PATCH') {
+      if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role)) return reject(response, 403, 'Menu management requires staff or administration access.')
+      const input = await body(request)
+      const itemId = decodeURIComponent(canteenItemRoute[1])
+      const result = await store.transact((data) => {
+        data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+        const item = data.foodItems.find((candidate) => candidate.id === itemId)
+        if (!item) throw Object.assign(new Error('Food item not found.'), { status: 404 })
+        if (input.name !== undefined) item.name = safeText(input.name, 120)
+        if (input.description !== undefined) item.description = safeText(input.description, 500)
+        if (input.category !== undefined) item.category = safeText(input.category, 80)
+        if (input.menu_type !== undefined) item.menu_type = String(input.menu_type).toLowerCase()
+        if (input.price !== undefined) item.price = input.price === null ? null : Number(input.price)
+        if (input.half_price !== undefined) item.half_price = input.half_price === null ? null : Number(input.half_price)
+        if (input.full_price !== undefined) item.full_price = input.full_price === null ? null : Number(input.full_price)
+        if (input.available !== undefined) item.available = Boolean(input.available)
+        if (input.preparation_time !== undefined) item.preparation_time = Number(input.preparation_time)
+        if (input.image !== undefined) item.image = String(input.image || '')
+        item.updated_at = new Date().toISOString()
+        return publicFoodItem(item)
+      })
+      return json(response, 200, { item: result })
+    }
+
+    if ((pathname === '/api/canteen/items' || pathname === '/api/food/items') && request.method === 'GET') {
+      if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role)) return reject(response, 403, 'Menu management requires staff or administration access.')
+      const data = await store.read()
+      return json(response, 200, { items: (data.foodItems || []).map(publicFoodItem), contact: CANTEEN_CONTACT })
+    }
+
+    if ((pathname === '/api/canteen/items' || pathname === '/api/food/items') && request.method === 'POST') {
+      if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role)) return reject(response, 403, 'Menu management requires staff or administration access.')
+      const input = await body(request)
+      const item = {
+        id: input.id || `food-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`,
+        name: safeText(input.name, 120),
+        description: safeText(input.description, 500),
+        category: safeText(input.category, 80),
+        menu_type: String(input.menu_type || input.menuType || 'veg').toLowerCase(),
+        price: input.price === undefined || input.price === null || input.price === '' ? null : Number(input.price),
+        half_price: input.half_price === undefined || input.half_price === null || input.half_price === '' ? null : Number(input.half_price),
+        full_price: input.full_price === undefined || input.full_price === null || input.full_price === '' ? null : Number(input.full_price),
+        image: String(input.image || ''),
+        available: input.available !== false,
+        preparation_time: Number(input.preparation_time ?? 10),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      if (!item.name || !item.category) return reject(response, 400, 'A food name and category are required.')
+      if (item.price === null && (item.half_price === null || item.full_price === null)) return reject(response, 400, 'Enter a valid price or half/full pricing.')
+      const created = await store.transact((data) => {
+        data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+        data.foodItems.unshift(item)
+        return publicFoodItem(item)
+      })
+      return json(response, 201, { item: created })
+    }
+
+    if (canteenItemRoute && request.method === 'DELETE') {
+      if (![ROLES.ADMIN, ROLES.STAFF].includes(user.role)) return reject(response, 403, 'Menu management requires staff or administration access.')
+      const id = decodeURIComponent(canteenItemRoute[1])
+      const updated = await store.transact((data) => {
+        data.foodItems ??= structuredClone(DEFAULT_CANTEEN_CATALOG)
+        const item = data.foodItems.find((entry) => entry.id === id)
+        if (!item) throw Object.assign(new Error('Food item not found.'), { status: 404 })
+        item.available = false
+        item.updated_at = new Date().toISOString()
+        return publicFoodItem(item)
+      })
+      return json(response, 200, { item: updated })
+    }
+
+    const foodOrderRoute = pathname.match(/^\/api\/(?:canteen|food)\/orders\/([^/]+)$/)
+    if (foodOrderRoute && request.method === 'PATCH') {
+      const input = await body(request)
+      const requestedStatus = String(input.order_status ?? input.status ?? '').trim()
+      const allowedStatus = ['Placed', 'Preparing', 'Ready', 'Collected', 'Cancelled']
+      const normalizedStatus = requestedStatus ? (requestedStatus === 'ACCEPTED' ? 'Placed' : requestedStatus === 'COMPLETED' ? 'Collected' : requestedStatus === 'READY' ? 'Ready' : requestedStatus === 'PREPARING' ? 'Preparing' : requestedStatus === 'CANCELLED' ? 'Cancelled' : requestedStatus) : ''
+      if (requestedStatus && !allowedStatus.includes(normalizedStatus)) return reject(response, 400, 'Choose a valid order status.')
+      const order = await store.transact((data) => {
+        const existing = (data.foodOrders || []).find((candidate) => candidate.id === decodeURIComponent(foodOrderRoute[1]))
+          ?? (data.orders || []).find((candidate) => candidate.id === decodeURIComponent(foodOrderRoute[1]))
+        if (!existing) throw Object.assign(new Error('Canteen order not found.'), { status: 404 })
+        const nextStatus = normalizedStatus || existing.status || existing.order_status || 'Placed'
+        const currentStatus = (existing.status !== undefined ? existing.status : existing.order_status === 'PLACED' ? 'Placed' : existing.order_status === 'PREPARING' ? 'Preparing' : '')
+        if (user.role === ROLES.ADMIN) {
+          if (existing.status !== undefined) existing.status = nextStatus
+          if (existing.order_status !== undefined) existing.order_status = nextStatus.toUpperCase()
+        } else if (user.role === ROLES.STUDENT && (existing.userId === user.id || existing.student_id === user.id) && nextStatus === 'Cancelled' && ['Placed', 'Preparing'].includes(currentStatus)) {
+          if (existing.status !== undefined) existing.status = 'Cancelled'
+          if (existing.order_status !== undefined) existing.order_status = 'CANCELLED'
+        } else {
+          throw Object.assign(new Error('You cannot change this order.'), { status: 403 })
+        }
+        if (existing.updatedAt !== undefined) existing.updatedAt = new Date().toISOString()
+        if (existing.updated_at !== undefined) existing.updated_at = new Date().toISOString()
+        return existing
+      })
+      const isLegacyCanteenOrder = Object.hasOwn(order, 'order_status') || Object.hasOwn(order, 'student_id')
+      return json(response, 200, { order: isLegacyCanteenOrder ? publicOrder(order) : publicFoodOrder(order) })
     }
 
     if (pathname === '/api/users' && request.method === 'GET') {
@@ -654,17 +1099,27 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!canAccess(user, CAMPUS_MODULES[collection])) return reject(response, 403, 'Your role cannot access this campus service.')
       if (request.method === 'GET') {
         const data = await store.read()
-        const records = data.campus?.[collection] ?? DEFAULT_CAMPUS_DATA[collection] ?? []
-        return json(response, 200, { records: records.filter((record) => record.active) })
+        const records = campusRecords(data, collection).filter(isRecordActive)
+        if (collection === 'emergency') {
+          records.sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0) || String(left.name || left.title).localeCompare(String(right.name || right.title)))
+        }
+        return json(response, 200, { records })
       }
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage campus data.')
       if (request.method === 'POST' && !campusRoute[2]) {
         const input = await body(request)
-        const record = validateRecord(input)
+        const record = validateCampusCollectionRecord(collection, input)
         if (collection === 'food' && hasManualCrowd(input)) Object.assign(record, validateManualCrowd(input))
         const created = await store.transact((data) => {
           const records = campusRecords(data, collection)
           record.id = randomUUID()
+          if (collection === 'emergency') {
+            record.created_at = new Date().toISOString()
+            record.updated_at = record.created_at
+            record.created_by = user.id
+            record.title = record.name
+            record.description = `${record.designation || 'Campus support'}${record.location ? ` · ${record.location}` : ''}${record.description ? ` · ${record.description}` : ''}`.trim()
+          }
           records.unshift(record)
           if (records.length > 200) throw Object.assign(new Error('This campus collection is full.'), { status: 400 })
           return record
@@ -673,11 +1128,29 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       }
       if (campusRoute[2] && request.method === 'PATCH') {
         const input = await body(request)
-        const patch = validateRecord(input)
+        const existingRecord = campusRecords(await store.read(), collection).find((candidate) => candidate.id === decodeURIComponent(campusRoute[2]))
+        const patch = validateCampusCollectionRecord(collection, input, existingRecord || {})
         if (collection === 'food' && hasManualCrowd(input)) Object.assign(patch, validateManualCrowd(input))
         const updated = await store.transact((data) => {
           const record = campusRecords(data, collection).find((candidate) => candidate.id === decodeURIComponent(campusRoute[2]))
           if (!record) throw Object.assign(new Error('Campus record not found.'), { status: 404 })
+          if (collection === 'emergency') {
+            record.name = patch.name
+            record.category = patch.category
+            record.phone_number = patch.phone_number
+            record.alternate_phone = patch.alternate_phone
+            record.designation = patch.designation
+            record.description = patch.description
+            record.location = patch.location
+            record.available_24x7 = patch.available_24x7
+            record.is_primary = patch.is_primary
+            record.is_active = patch.is_active
+            record.active = patch.active
+            record.display_order = patch.display_order
+            record.title = patch.name
+            record.updated_at = new Date().toISOString()
+            return record
+          }
           record.title = patch.title
           record.description = patch.description
           if (collection === 'food' && hasManualCrowd(input)) {
@@ -696,6 +1169,10 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           const record = campusRecords(data, collection).find((candidate) => candidate.id === id)
           if (!record) return false
           record.active = false
+          if (collection === 'emergency') {
+            record.is_active = false
+            record.is_primary = false
+          }
           return true
         })
         return found ? json(response, 200, { ok: true }) : reject(response, 404, 'Campus record not found.')
@@ -865,6 +1342,55 @@ function validateRecord(input) {
   return { title, description }
 }
 
+function emergencyCategoryLabel(value) {
+  return EMERGENCY_CONTACT_CATEGORIES[value] || String(value || '').replace(/_/g, ' ')
+}
+
+function validateEmergencyContact(input, existing = {}) {
+  const name = safeText(input.name ?? input.title ?? existing.name ?? existing.title, 120)
+  const category = String(input.category ?? existing.category ?? '').trim().toUpperCase()
+  const phoneNumber = safeText(input.phone_number ?? input.phoneNumber ?? existing.phone_number ?? existing.phoneNumber ?? '', 30)
+  const alternatePhone = safeText(input.alternate_phone ?? input.alternatePhone ?? existing.alternate_phone ?? existing.alternatePhone ?? '', 30)
+  const designation = safeText(input.designation ?? existing.designation ?? '', 120)
+  const description = safeText(input.description ?? existing.description ?? '', 500)
+  const location = safeText(input.location ?? existing.location ?? '', 160)
+  const available24x7 = input.available_24x7 !== undefined ? Boolean(input.available_24x7) : Boolean(existing.available_24x7 ?? true)
+  const isPrimary = input.is_primary !== undefined ? Boolean(input.is_primary) : Boolean(existing.is_primary ?? false)
+  const isActive = input.is_active !== undefined ? Boolean(input.is_active) : Boolean(existing.is_active ?? existing.active ?? true)
+  const displayOrder = Number.isInteger(Number(input.display_order ?? existing.display_order ?? 1)) ? Number(input.display_order ?? existing.display_order ?? 1) : 1
+  if (!name) throw Object.assign(new Error('Contact name is required.'), { status: 400 })
+  if (!EMERGENCY_CONTACT_CATEGORY_VALUES.includes(category)) throw Object.assign(new Error('Choose a valid emergency contact category.'), { status: 400 })
+  if (!phoneNumber) throw Object.assign(new Error('Phone number is required.'), { status: 400 })
+  return {
+    id: existing.id || randomUUID(),
+    name,
+    category,
+    phone_number: phoneNumber,
+    alternate_phone: alternatePhone,
+    designation,
+    description,
+    location,
+    available_24x7: available24x7,
+    is_primary: isPrimary,
+    is_active: isActive,
+    active: isActive,
+    display_order: displayOrder,
+    title: name,
+    created_at: existing.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    created_by: existing.created_by || 'admin',
+  }
+}
+
+function validateCampusCollectionRecord(collection, input, existing = {}) {
+  if (collection === 'emergency') return validateEmergencyContact(input, existing)
+  return validateRecord(input)
+}
+
+function isRecordActive(record) {
+  return record && record.active !== false && record.is_active !== false
+}
+
 function validateManualCrowd(input) {
   const crowdLevel = input.crowdLevel || 'Moderate'
   const occupancyPercent = input.occupancyPercent === undefined || input.occupancyPercent === '' ? 68 : Number(input.occupancyPercent)
@@ -895,9 +1421,48 @@ function publicFoodOrder(order) {
   return { id, orderNumber, ...(userId ? { userId } : {}), meal, item, status, createdAt, updatedAt }
 }
 
+function publicOrder(order) {
+  return {
+    id: order.id,
+    order_number: order.order_number,
+    student_id: order.student_id,
+    student_name: order.student_name,
+    contact_number: order.contact_number,
+    course: order.course,
+    department: order.department,
+    subtotal: Number(order.subtotal || 0),
+    total_amount: Number(order.total_amount || 0),
+    payment_method: order.payment_method,
+    payment_status: order.payment_status,
+    payment_submitted_at: order.payment_submitted_at || null,
+    payment_verified_at: order.payment_verified_at || null,
+    payment_verified_by: order.payment_verified_by || null,
+    order_status: order.order_status,
+    estimated_ready_time: order.estimated_ready_time || null,
+    rejection_reason: order.rejection_reason || null,
+    staff_note: order.staff_note || null,
+    created_at: order.created_at,
+    updated_at: order.updated_at,
+    accepted_at: order.accepted_at || null,
+    preparing_at: order.preparing_at || null,
+    ready_at: order.ready_at || null,
+    completed_at: order.completed_at || null,
+    cancelled_at: order.cancelled_at || null,
+    items: (order.items || []).map((item) => ({
+      id: item.id,
+      food_item_id: item.food_item_id,
+      food_name_snapshot: item.food_name_snapshot,
+      variant: item.variant,
+      price_snapshot: Number(item.price_snapshot || 0),
+      quantity: Number(item.quantity || 0),
+      subtotal: Number(item.subtotal || 0),
+    })),
+  }
+}
+
 function publicNotification(notification) {
-  const { id, title, message, referenceId, target, readAt, createdAt } = notification
-  return { id, title, message, referenceId, target, readAt, createdAt }
+const { id, title, message, referenceId, target, readAt, createdAt } = notification
+return { id, title, message, referenceId, target, readAt, createdAt }
 }
 
 function validateSportsRecord(input) {

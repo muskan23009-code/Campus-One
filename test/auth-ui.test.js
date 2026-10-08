@@ -22,6 +22,8 @@ test('five-role login screen and role-specific registration forms render the exp
     const student = render('Student')
     assert.match(student, /DATE OF BIRTH/)
     assert.equal(student.includes('ROLL / ENROLLMENT NUMBER'), false, 'enrollment fields are deferred to student step two')
+    const administration = render('Administration')
+    assert.match(administration, /<form class="login-form auth-registration-form">[\s\S]*?<button type="submit" class="login-submit">CONTINUE/)
     const studentEnrollment = render('Student', 1)
     assert.match(studentEnrollment, /ROLL \/ ENROLLMENT NUMBER/)
     assert.match(studentEnrollment, /ADMISSION YEAR/)

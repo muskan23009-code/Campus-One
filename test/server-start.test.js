@@ -1,10 +1,29 @@
 import { request as httpRequest } from 'node:http'
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { startServer } from '../server/index.js'
+import { loadLocalEnvironment, startServer } from '../server/index.js'
+
+const TEST_ADMIN_ACCESS_CODE = 'test-only-admin-access-code'
+
+test('the backend loads its local environment file', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'campus-one-env-'))
+  const environmentFile = join(directory, '.env.local')
+  const previousAccessCode = process.env.CAMPUS_ADMIN_ACCESS_CODE
+  delete process.env.CAMPUS_ADMIN_ACCESS_CODE
+  try {
+    await writeFile(environmentFile, 'CAMPUS_ADMIN_ACCESS_CODE=test-local-admin-access-code\n')
+    assert.equal(loadLocalEnvironment(environmentFile), true)
+    assert.equal(process.env.CAMPUS_ADMIN_ACCESS_CODE, 'test-local-admin-access-code')
+  } finally {
+    if (previousAccessCode === undefined) delete process.env.CAMPUS_ADMIN_ACCESS_CODE
+    else process.env.CAMPUS_ADMIN_ACCESS_CODE = previousAccessCode
+    await unlink(environmentFile)
+    await rmdir(directory)
+  }
+})
 
 function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -30,10 +49,13 @@ function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie
 
 test('the full Vite and auth server serves a Codespaces forwarded host', async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-server-'))
-  const instance = await startServer({ port: 0, dataDirectory })
-  const url = `http://127.0.0.1:${instance.server.address().port}`
-  const host = 'campus-5173.app.github.dev'
+  const previousAccessCode = process.env.CAMPUS_ADMIN_ACCESS_CODE
+  process.env.CAMPUS_ADMIN_ACCESS_CODE = TEST_ADMIN_ACCESS_CODE
+  let instance
   try {
+    instance = await startServer({ port: 0, dataDirectory })
+    const url = `http://127.0.0.1:${instance.server.address().port}`
+    const host = 'campus-5173.app.github.dev'
     let response = await forwardedRequest(`${url}/`, { host })
     assert.equal(response.status, 200, 'the forwarded hostname serves the React app')
     assert.match(response.text, /Campus One \| Puran Murti Vidyapeeth/)
@@ -45,8 +67,22 @@ test('the full Vite and auth server serves a Codespaces forwarded host', async (
     response = await forwardedRequest(`${url}/api/auth/bootstrap-status`, { host })
     const setup = JSON.parse(response.text)
     assert.equal(setup.setupRequired, true)
-    assert.equal(setup.adminAccessConfigured, false)
+    assert.equal(setup.adminAccessConfigured, true, 'the server reads the private access code from its environment')
     assert.ok(setup.departments.includes('Computer Science'))
+
+    response = await forwardedRequest(`${url}/api/admin/registration-code/verify`, {
+      host, method: 'POST', origin: `https://${host}`, secure: true,
+      body: { accessCode: 'incorrect-test-code' },
+    })
+    assert.equal(response.status, 403, 'the server rejects an incorrect Administration Access Code')
+
+    response = await forwardedRequest(`${url}/api/admin/registration-code/verify`, {
+      host, method: 'POST', origin: `https://${host}`, secure: true,
+      body: { accessCode: TEST_ADMIN_ACCESS_CODE },
+    })
+    assert.equal(response.status, 200, 'the server verifies the environment-provided code')
+    assert.equal(JSON.parse(response.text).valid, true)
+    assert.equal(response.text.includes(TEST_ADMIN_ACCESS_CODE), false, 'the server never returns the private code')
 
     response = await forwardedRequest(`${url}/api/registrations`, {
       host,
@@ -75,7 +111,11 @@ test('the full Vite and auth server serves a Codespaces forwarded host', async (
     assert.equal(response.status, 200, 'the private application status is available through the forwarded API')
     assert.equal(JSON.parse(response.text).application.status, 'Pending')
   } finally {
-    await instance.close()
-    await instance.store.clear()
+    if (instance) {
+      await instance.close()
+      await instance.store.clear()
+    }
+    if (previousAccessCode === undefined) delete process.env.CAMPUS_ADMIN_ACCESS_CODE
+    else process.env.CAMPUS_ADMIN_ACCESS_CODE = previousAccessCode
   }
 })

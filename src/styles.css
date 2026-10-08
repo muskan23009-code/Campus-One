@@ -733,8 +733,27 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .sports-create-icon { display: grid; width: 29px; height: 29px; place-items: center; margin-bottom: 11px; color: #607d58; background: #edf1e8; border-radius: 3px; }
 .sports-create-section > .section-eyebrow { margin-bottom: 2px; }
 .sports-create-section > p { margin: 7px 0 12px; color: #8a9286; font-size: 9px; line-height: 1.7; }
-.sports-create-section > .user-form { width: 100%; }
-.campus-manager-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; margin: 16px 0 13px; }
+.emergency-manager-panel { display: flex; flex-direction: column; gap: 14px; }
+.emergency-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.emergency-toolbar input { flex: 1 1 220px; min-height: 34px; padding: 0 10px; color: #364238; background: #fff; border: 1px solid #e6eae2; border-radius: 2px; }
+.emergency-contact-table { display: flex; flex-direction: column; background: #fff; border: 1px solid #e9ece6; border-radius: 3px; overflow: hidden; }
+.emergency-table-head, .emergency-table-row { display: grid; grid-template-columns: 1.15fr 2.4fr 1.45fr 1.1fr 1.8fr; gap: 12px; align-items: center; padding: 10px 12px; }
+.emergency-table-head { color: #67726b; font-size: 8px; font-weight: 700; letter-spacing: .54px; text-transform: uppercase; background: #f4f6f1; border-bottom: 1px solid #e9ece6; }
+.emergency-table-row { border-bottom: 1px solid #eef1ee; }
+.emergency-table-row:last-child { border-bottom: 0; }
+.emergency-table-row strong { display: block; margin-bottom: 2px; color: #374238; font-size: 11px; }
+.emergency-table-row small { display: block; color: #6b756d; font-size: 9px; }
+.emergency-status-badge, .emergency-primary-badge { display: inline-flex; align-items: center; justify-content: center; padding: 3px 6px; border-radius: 999px; font-size: 8px; font-weight: 700; letter-spacing: .45px; text-transform: uppercase; }
+.emergency-status-badge.active { background: #eaf3ed; color: #2d6b47; }
+.emergency-status-badge.inactive { background: #f4f1ef; color: #8c5e52; }
+.emergency-primary-badge { background: #edf3ff; color: #3a5fa5; }
+.emergency-action-group { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.module-link { padding: 0; background: transparent; color: #3d5b49; border: 0; font-size: 9px; font-weight: 700; letter-spacing: .45px; cursor: pointer; }
+.module-link.danger { color: #7d4545; }
+.emergency-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.toggle-field { display: flex; align-items: center; justify-content: space-between; min-height: 37px; padding: 0 9px; color: #637065; font-size: 9px; font-weight: 700; letter-spacing: .5px; border: 1px solid #e6eae2; border-radius: 2px; background: #fff; }
+.toggle-field input { width: 15px; height: 15px; accent-color: #557452; }
+.sports-create-section > .user-form { width: 100%; }.campus-manager-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; margin: 16px 0 13px; }
 .campus-section-select { display: flex; width: min(310px,100%); flex-direction: column; gap: 6px; }
 .campus-section-select > span:last-child { position: relative; }
 .campus-section-select select { width: 100%; min-height: 36px; padding: 0 31px 0 9px; color: #465445; font-size: 10px; appearance: none; background: white; border: 1px solid #e7eae3; border-radius: 2px; }

@@ -24,7 +24,14 @@ export default function ModuleView({ page, user, onAction }) {
   const [recordsError, setRecordsError] = useState('')
   const detail = moduleDetails[page]
   const Icon = icons[detail.icon] || Sparkles
-  const rows = liveRecords ? liveRecords.map((record) => [record.title, record.description, 'View details']) : detail.rows
+  const emergencyContacts = page === 'emergency' && liveRecords ? liveRecords.filter((record) => record.is_active !== false && record.active !== false).map((record) => {
+    const name = record.name || record.title || 'Emergency contact'
+    const category = String(record.category || 'EMERGENCY').toUpperCase()
+    const phone = record.phone_number || record.phone || '112'
+    const descriptionParts = [record.designation, record.location, record.description].filter(Boolean)
+    return [name, `${categoryLabel(category)} · ${descriptionParts.join(' · ') || 'Campus assistance'} · ${phone}`, 'Call now', phone]
+  }) : []
+  const rows = page === 'emergency' ? emergencyContacts : liveRecords ? liveRecords.map((record) => [record.title, record.description, 'View details']) : detail.rows
   const filtered = rows.filter((row) => row.join(' ').toLowerCase().includes(filter.toLowerCase()))
   const messEstimate = liveRecords?.find((record) => record.id === 'food-mess') || liveRecords?.find((record) => record.title.toLowerCase().includes('mess'))
   const foodMenus = {
@@ -105,7 +112,7 @@ export default function ModuleView({ page, user, onAction }) {
 
       <section className="module-entries"><div className="module-list-header"><div><span className="section-eyebrow">{page === 'complaints' ? 'YOUR SECURE CAMPUS REQUESTS' : page === 'notices' ? 'THE LATEST FROM ACROSS CAMPUS' : page === 'emergency' ? 'QUICK ACCESS, WHEN IT MATTERS' : page === 'copilot' ? 'GOOD PLACES TO START' : page === 'food' ? 'ON YOUR CAMPUS MENU' : page === 'navigation' ? 'POPULAR PLACES' : 'A FEW PLACES TO START'}</span><h2>{page === 'complaints' ? user.role === 'Staff' ? 'Assigned student requests' : 'Your requests' : page === 'notices' ? 'Your campus updates' : page === 'emergency' ? 'Get in touch' : page === 'copilot' ? 'Your campus, in your corner' : page === 'food' ? 'Today at a glance' : page === 'navigation' ? 'Find your destination' : `Explore ${detail.title.toLowerCase()}`}</h2></div><span className="results-count">{visibleComplaints ? visibleComplaints.length : filtered.length} {visibleComplaints ? 'requests' : filtered.length === 1 ? 'item' : 'items'}</span></div>
         {recordsError && <div className="management-alert" role="alert">{recordsError}</div>}
-        <div className="module-row-list">{visibleComplaints ? visibleComplaints.map((record, index) => <article className="module-row" key={record.id}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{record.title}</strong><span>{record.details}</span></div>{user.role === 'Staff' && <select className="complaint-status-select" aria-label={`Update ${record.title}`} value={record.status} onChange={(event) => updateComplaint(record, event.target.value)}>{['Open', 'In progress', 'Resolved'].map((status) => <option key={status}>{status}</option>)}</select>}</article>) : filtered.map(([title, description, action], index) => <article className="module-row" key={title}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{title}</strong><span>{description}</span></div>{page === 'emergency' && <a className="emergency-direct" href="tel:112" aria-label={`Call ${title}`} onClick={(event) => { event.preventDefault(); runAction(action) }}><Phone size={15} /></a>}<button className="module-row-action" onClick={() => runAction(action)}>{action}<ArrowRight size={13} /></button></article>)}{visibleComplaints && visibleComplaints.length === 0 && <div className="module-no-results">{user.role === 'Student' ? 'You have not sent any requests yet.' : 'There are no requests assigned to your account.'}</div>}{!visibleComplaints && filtered.length === 0 && <div className="module-no-results">Nothing here just yet. Try a different search.</div>}</div>
+        <div className="module-row-list">{visibleComplaints ? visibleComplaints.map((record, index) => <article className="module-row" key={record.id}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{record.title}</strong><span>{record.details}</span></div>{user.role === 'Staff' && <select className="complaint-status-select" aria-label={`Update ${record.title}`} value={record.status} onChange={(event) => updateComplaint(record, event.target.value)}>{['Open', 'In progress', 'Resolved'].map((status) => <option key={status}>{status}</option>)}</select>}</article>) : filtered.map((row, index) => { const [title, description, action, phoneNumber] = row; const telHref = page === 'emergency' && phoneNumber ? `tel:${String(phoneNumber).replace(/\D+/g, '')}` : 'tel:112'; return <article className="module-row" key={`${title}-${index}`}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{title}</strong><span>{description}</span></div>{page === 'emergency' && <a className="emergency-direct" href={telHref} aria-label={`Call ${title}`} onClick={(event) => { event.preventDefault(); runAction(action) }}><Phone size={15} /></a>}<button className="module-row-action" onClick={() => runAction(action)}>{page === 'emergency' ? 'Call now' : action}<ArrowRight size={13} /></button></article> })}{visibleComplaints && visibleComplaints.length === 0 && <div className="module-no-results">{user.role === 'Student' ? 'You have not sent any requests yet.' : 'There are no requests assigned to your account.'}</div>}{!visibleComplaints && filtered.length === 0 && <div className="module-no-results">Nothing here just yet. Try a different search.</div>}</div>
       </section>
 
       {page === 'analytics' && <section className="analytics-chart-section"><div className="module-list-header"><div><span className="section-eyebrow">A QUIETER LUNCH RUSH</span><h2>Dining wait times</h2></div><span className="analytics-change"><ArrowUpRight size={13} /> 18% this month</span></div><div className="chart-bars" aria-label="Dining wait times this week">{[['M',40],['T',65],['W',49],['T',76],['F',38],['S',27],['S',32]].map(([label, height], index) => <div className="chart-column" key={`${label}-${index}`}><span style={{ height: `${height}%` }} className={index === 4 ? 'chart-highlight' : ''}/><span>{label}</span></div>)}</div></section>}
@@ -113,6 +120,19 @@ export default function ModuleView({ page, user, onAction }) {
       <footer className="dashboard-footer"><span><span className="footer-status-dot" />Campus services available</span><span>Campus One · Puran Murti Vidyapeeth</span></footer>
     </div>
   )
+}
+
+function categoryLabel(category) {
+  return {
+    MEDICAL: 'Medical',
+    SECURITY: 'Security',
+    FIRE: 'Fire',
+    POLICE: 'Police',
+    WOMEN_SAFETY: 'Women safety',
+    STUDENT_SUPPORT: 'Student support',
+    ADMIN: 'Admin',
+    OTHER: 'Other',
+  }[category] || 'Emergency'
 }
 
 function StatIcon({ index }) {

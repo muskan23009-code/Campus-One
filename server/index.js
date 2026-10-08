@@ -1,19 +1,30 @@
+import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { createServer as createViteServer } from 'vite'
 import { createCampusApp } from './app.js'
 import { createStore } from './store.js'
 
+export function loadLocalEnvironment(environmentFile = fileURLToPath(new URL('../.env.local', import.meta.url))) {
+  if (!existsSync(environmentFile)) return false
+  process.loadEnvFile(environmentFile)
+  return true
+}
+
+loadLocalEnvironment()
+
 export async function startServer(options = {}) {
   const production = options.production ?? process.env.NODE_ENV === 'production'
   const port = Number(options.port ?? process.env.PORT ?? 5173)
   const store = options.store || createStore(options.dataDirectory || process.env.CAMPUS_DATA_DIR || resolve('.data'))
+  const adminAccessCode = options.adminAccessCode ?? process.env.CAMPUS_ADMIN_ACCESS_CODE
   const sessionSecret = options.sessionSecret || await store.getSessionSecret()
   let vite
   const handler = createCampusApp({
     store,
     sessionSecret,
+    adminAccessCode,
     staticDirectory: production ? resolve(options.staticDirectory || 'dist') : null,
   })
   const server = createServer(handler)
@@ -24,7 +35,7 @@ export async function startServer(options = {}) {
       server: { middlewareMode: true, hmr: { server } },
       appType: 'spa',
     })
-    const app = createCampusApp({ store, sessionSecret, viteMiddleware: vite.middlewares })
+    const app = createCampusApp({ store, sessionSecret, adminAccessCode, viteMiddleware: vite.middlewares })
     server.removeAllListeners('request')
     server.on('request', app)
   }
