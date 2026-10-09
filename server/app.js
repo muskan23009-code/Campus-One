@@ -1358,13 +1358,32 @@ function validateEmergencyContact(input, existing = {}) {
   const designation = safeText(input.designation ?? existing.designation ?? '', 120)
   const description = safeText(input.description ?? existing.description ?? '', 500)
   const location = safeText(input.location ?? existing.location ?? '', 160)
+  const locationUrl = safeText(input.location_url ?? input.map_url ?? existing.location_url ?? existing.map_url ?? '', 500)
   const available24x7 = input.available_24x7 !== undefined ? Boolean(input.available_24x7) : Boolean(existing.available_24x7 ?? true)
   const isPrimary = input.is_primary !== undefined ? Boolean(input.is_primary) : Boolean(existing.is_primary ?? false)
   const isActive = input.is_active !== undefined ? Boolean(input.is_active) : Boolean(existing.is_active ?? existing.active ?? true)
   const displayOrder = Number.isInteger(Number(input.display_order ?? existing.display_order ?? 1)) ? Number(input.display_order ?? existing.display_order ?? 1) : 1
+  const isValidPhone = (value) => {
+    const candidate = String(value || '').trim()
+    if (!candidate) return false
+    if (!/^\+?[\d\s().-]{7,20}$/.test(candidate)) return false
+    const digits = candidate.replace(/\D/g, '')
+    return digits.length >= 7 && digits.length <= 15
+  }
+
   if (!name) throw Object.assign(new Error('Contact name is required.'), { status: 400 })
   if (!EMERGENCY_CONTACT_CATEGORY_VALUES.includes(category)) throw Object.assign(new Error('Choose a valid emergency contact category.'), { status: 400 })
-  if (!phoneNumber) throw Object.assign(new Error('Phone number is required.'), { status: 400 })
+  if (!isValidPhone(phoneNumber)) throw Object.assign(new Error('Enter a valid emergency phone number.'), { status: 400 })
+  if (alternatePhone && !isValidPhone(alternatePhone)) throw Object.assign(new Error('Enter a valid alternate emergency phone number.'), { status: 400 })
+  if (locationUrl) {
+    try {
+      const parsed = new URL(locationUrl)
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Invalid protocol')
+    } catch {
+      throw Object.assign(new Error('Enter a valid map or location URL.'), { status: 400 })
+    }
+  }
+
   return {
     id: existing.id || randomUUID(),
     name,
@@ -1374,6 +1393,7 @@ function validateEmergencyContact(input, existing = {}) {
     designation,
     description,
     location,
+    location_url: locationUrl,
     available_24x7: available24x7,
     is_primary: isPrimary,
     is_active: isActive,

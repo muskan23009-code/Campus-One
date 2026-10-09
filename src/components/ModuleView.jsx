@@ -24,14 +24,47 @@ export default function ModuleView({ page, user, onAction }) {
   const [recordsError, setRecordsError] = useState('')
   const detail = moduleDetails[page]
   const Icon = icons[detail.icon] || Sparkles
-  const emergencyContacts = page === 'emergency' && liveRecords ? liveRecords.filter((record) => record.is_active !== false && record.active !== false).map((record) => {
+  const isValidPhoneNumber = (value) => {
+    const candidate = String(value || '').trim()
+    if (!candidate) return false
+    if (!/^\+?[\d\s().-]{7,20}$/.test(candidate)) return false
+    return candidate.replace(/\D/g, '').length >= 7 && candidate.replace(/\D/g, '').length <= 15
+  }
+  const getEmergencyLocationUrl = (value) => {
+    const candidate = String(value || '').trim()
+    if (!candidate) return ''
+    try {
+      const parsed = new URL(candidate)
+      return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : ''
+    } catch {
+      return ''
+    }
+  }
+  const emergencyContacts = page === 'emergency' && liveRecords ? liveRecords.filter((record) => record.is_active !== false && record.active !== false).sort((left, right) => (Number(left.display_order ?? 999) - Number(right.display_order ?? 999)) || String(left.name || left.title).localeCompare(String(right.name || right.title))).map((record) => {
     const name = record.name || record.title || 'Emergency contact'
     const category = String(record.category || 'EMERGENCY').toUpperCase()
-    const phone = record.phone_number || record.phone || '112'
-    const descriptionParts = [record.designation, record.location, record.description].filter(Boolean)
-    return [name, `${categoryLabel(category)} · ${descriptionParts.join(' · ') || 'Campus assistance'} · ${phone}`, 'Call now', phone]
+    const phone = String(record.phone_number || record.phone || '').trim()
+    const validPhone = isValidPhoneNumber(phone)
+    const locationUrl = getEmergencyLocationUrl(record.location_url || record.map_url || '')
+    return {
+      id: record.id,
+      name,
+      category,
+      phone,
+      validPhone,
+      location: record.location || 'Campus support',
+      description: [record.designation, record.location, record.description].filter(Boolean).join(' · ') || 'Campus assistance',
+      locationUrl,
+      available24x7: record.available_24x7 !== false,
+    }
   }) : []
-  const rows = page === 'emergency' ? emergencyContacts : liveRecords ? liveRecords.map((record) => [record.title, record.description, 'View details']) : detail.rows
+  const emergencyLocations = page === 'emergency' && emergencyContacts.length > 0 ? emergencyContacts.map((contact) => ({
+    id: contact.id,
+    name: contact.location || `${contact.name} location`,
+    description: contact.description,
+    url: contact.locationUrl,
+  })).filter((item) => item.name && (item.url || item.description)) : []
+  const rows = page === 'emergency' ? emergencyContacts.map((contact) => [contact.name, `${categoryLabel(contact.category)} · ${contact.description} · ${contact.phone || 'No number available'}`, contact.validPhone ? 'Call now' : 'Unavailable', contact.phone || '']) : liveRecords ? liveRecords.map((record) => [record.title, record.description, 'View details']) : detail.rows
   const filtered = rows.filter((row) => row.join(' ').toLowerCase().includes(filter.toLowerCase()))
   const messEstimate = liveRecords?.find((record) => record.id === 'food-mess') || liveRecords?.find((record) => record.title.toLowerCase().includes('mess'))
   const foodMenus = {

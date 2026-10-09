@@ -28,6 +28,7 @@ const EMPTY_EMERGENCY_DRAFT = {
   designation: '',
   description: '',
   location: '',
+  location_url: '',
   available_24x7: true,
   is_primary: false,
   is_active: true,
@@ -100,6 +101,7 @@ export default function CampusManagement({ onNotify }) {
       const payload = {
         ...emergencyDraft,
         display_order: Number(emergencyDraft.display_order) || 1,
+        location_url: emergencyDraft.location_url?.trim(),
         available_24x7: Boolean(emergencyDraft.available_24x7),
         is_primary: Boolean(emergencyDraft.is_primary),
         is_active: Boolean(emergencyDraft.is_active),
@@ -179,6 +181,7 @@ export default function CampusManagement({ onNotify }) {
       designation: contact.designation || '',
       description: contact.description || '',
       location: contact.location || '',
+      location_url: contact.location_url || contact.map_url || '',
       available_24x7: contact.available_24x7 !== false,
       is_primary: Boolean(contact.is_primary),
       is_active: contact.is_active !== false && contact.active !== false,
@@ -389,6 +392,10 @@ export default function CampusManagement({ onNotify }) {
                 <label>
                   Location
                   <input value={emergencyDraft.location} onChange={(event) => setEmergencyDraft({ ...emergencyDraft, location: event.target.value })} />
+                </label>
+                <label>
+                  Map / Location URL
+                  <input value={emergencyDraft.location_url} onChange={(event) => setEmergencyDraft({ ...emergencyDraft, location_url: event.target.value })} placeholder="https://maps.google.com/..." />
                 </label>
                 <label>
                   Description
