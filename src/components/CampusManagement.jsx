@@ -10,24 +10,32 @@ const SECTIONS = [
 ]
 
 const EMERGENCY_CATEGORIES = [
-  ['MEDICAL', 'Medical / Ambulance'],
-  ['SECURITY', 'Campus Security'],
-  ['FIRE', 'Fire Emergency'],
+  ['HOSTEL_WARDEN', 'Hostel Warden'],
+  ['HOSTEL_IN_CHARGE', 'Hostel In-Charge'],
+  ['HOSTEL_SECURITY', 'Hostel Security'],
+  ['MAIN_GATE_GUARD', 'Main Gate Guard'],
+  ['CAMPUS_SECURITY', 'Campus Security'],
+  ['SECURITY_OFFICE', 'Security Office'],
+  ['MEDICAL_EMERGENCY', 'Medical Emergency'],
+  ['AMBULANCE', 'Ambulance'],
+  ['FIRE_EMERGENCY', 'Fire Emergency'],
   ['POLICE', 'Police'],
-  ['WOMEN_SAFETY', 'Women Safety / Harassment'],
-  ['STUDENT_SUPPORT', 'Student Support / Counselor'],
-  ['ADMIN', 'Admin Help Desk'],
-  ['OTHER', 'Other Emergency'],
+  ['WOMEN_SAFETY', 'Women Safety'],
+  ['ANTI_RAGGING', 'Anti-Ragging'],
+  ['TRANSPORT_EMERGENCY', 'Transport Emergency'],
+  ['ADMINISTRATION_EMERGENCY', 'Administration Emergency'],
+  ['OTHER_EMERGENCY', 'Other Emergency'],
 ]
 
 const EMPTY_EMERGENCY_DRAFT = {
   name: '',
-  category: 'MEDICAL',
+  category: 'MEDICAL_EMERGENCY',
   phone_number: '',
   alternate_phone: '',
   designation: '',
   description: '',
   location: '',
+  hostel_name: '',
   location_url: '',
   available_24x7: true,
   is_primary: false,
@@ -46,6 +54,8 @@ export default function CampusManagement({ onNotify }) {
   const [emergencyDraft, setEmergencyDraft] = useState(EMPTY_EMERGENCY_DRAFT)
   const [emergencyEditId, setEmergencyEditId] = useState('')
   const [emergencySearch, setEmergencySearch] = useState('')
+  const [emergencyCategoryFilter, setEmergencyCategoryFilter] = useState('ALL')
+  const [emergencyStatusFilter, setEmergencyStatusFilter] = useState('ALL')
   const [editId, setEditId] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -54,11 +64,13 @@ export default function CampusManagement({ onNotify }) {
   const emergencyFiltered = useMemo(() => {
     const query = emergencySearch.trim().toLowerCase()
     return records.filter((contact) => {
-      if (!query) return true
-      const haystack = [contact.name, contact.category, contact.designation, contact.location, contact.description, contact.phone_number].join(' ').toLowerCase()
-      return haystack.includes(query)
+      const matchesQuery = !query || [contact.name, contact.category, contact.designation, contact.location, contact.hostel_name, contact.description, contact.phone_number].join(' ').toLowerCase().includes(query)
+      const matchesCategory = emergencyCategoryFilter === 'ALL' || contact.category === emergencyCategoryFilter
+      const isActive = contact.is_active !== false && contact.active !== false
+      const matchesStatus = emergencyStatusFilter === 'ALL' || (emergencyStatusFilter === 'ACTIVE' ? isActive : !isActive)
+      return matchesQuery && matchesCategory && matchesStatus
     })
-  }, [emergencySearch, records])
+  }, [emergencyCategoryFilter, emergencySearch, emergencyStatusFilter, records])
 
   useEffect(() => {
     setLoading(true)
@@ -101,6 +113,8 @@ export default function CampusManagement({ onNotify }) {
       const payload = {
         ...emergencyDraft,
         display_order: Number(emergencyDraft.display_order) || 1,
+        priority: Number(emergencyDraft.display_order) || 1,
+        hostel_name: emergencyDraft.hostel_name?.trim(),
         location_url: emergencyDraft.location_url?.trim(),
         available_24x7: Boolean(emergencyDraft.available_24x7),
         is_primary: Boolean(emergencyDraft.is_primary),
@@ -175,17 +189,18 @@ export default function CampusManagement({ onNotify }) {
     setEmergencyEditId(contact.id)
     setEmergencyDraft({
       name: contact.name || '',
-      category: contact.category || 'MEDICAL',
+      category: contact.category || 'MEDICAL_EMERGENCY',
       phone_number: contact.phone_number || '',
       alternate_phone: contact.alternate_phone || '',
       designation: contact.designation || '',
       description: contact.description || '',
       location: contact.location || '',
+      hostel_name: contact.hostel_name || contact.hostelName || '',
       location_url: contact.location_url || contact.map_url || '',
       available_24x7: contact.available_24x7 !== false,
       is_primary: Boolean(contact.is_primary),
       is_active: contact.is_active !== false && contact.active !== false,
-      display_order: String(contact.display_order ?? 1),
+      display_order: String(contact.display_order ?? contact.priority ?? 1),
     })
   }
 
@@ -308,6 +323,17 @@ export default function CampusManagement({ onNotify }) {
           <div className="emergency-manager-panel">
             <div className="emergency-toolbar">
               <input aria-label="Search emergency contacts" value={emergencySearch} onChange={(event) => setEmergencySearch(event.target.value)} placeholder="Search contacts..." />
+              <div className="emergency-filter-group">
+                <select value={emergencyCategoryFilter} onChange={(event) => setEmergencyCategoryFilter(event.target.value)}>
+                  <option value="ALL">All categories</option>
+                  {EMERGENCY_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <select value={emergencyStatusFilter} onChange={(event) => setEmergencyStatusFilter(event.target.value)}>
+                  <option value="ALL">All statuses</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
+              </div>
               <button type="button" className="module-primary" onClick={() => { setEmergencyEditId(''); setEmergencyDraft(EMPTY_EMERGENCY_DRAFT) }}>+ Add contact</button>
             </div>
 
@@ -331,6 +357,7 @@ export default function CampusManagement({ onNotify }) {
                     <span>
                       <strong>{contact.name}</strong>
                       {contact.designation && <small>{contact.designation}</small>}
+                      {contact.hostel_name && <small>{contact.hostel_name}</small>}
                       {contact.location && <small>{contact.location}</small>}
                     </span>
                     <span>
@@ -392,6 +419,10 @@ export default function CampusManagement({ onNotify }) {
                 <label>
                   Location
                   <input value={emergencyDraft.location} onChange={(event) => setEmergencyDraft({ ...emergencyDraft, location: event.target.value })} />
+                </label>
+                <label>
+                  Hostel Name / Block
+                  <input value={emergencyDraft.hostel_name} onChange={(event) => setEmergencyDraft({ ...emergencyDraft, hostel_name: event.target.value })} placeholder="Hostel A, Boys Hostel, etc." />
                 </label>
                 <label>
                   Map / Location URL
@@ -494,15 +525,28 @@ export default function CampusManagement({ onNotify }) {
 
 function categoryLabel(category) {
   return {
-    MEDICAL: 'Medical',
-    SECURITY: 'Security',
-    FIRE: 'Fire',
+    HOSTEL_WARDEN: 'Hostel Warden',
+    HOSTEL_IN_CHARGE: 'Hostel In-Charge',
+    HOSTEL_SECURITY: 'Hostel Security',
+    MAIN_GATE_GUARD: 'Main Gate Guard',
+    CAMPUS_SECURITY: 'Campus Security',
+    SECURITY_OFFICE: 'Security Office',
+    MEDICAL_EMERGENCY: 'Medical Emergency',
+    AMBULANCE: 'Ambulance',
+    FIRE_EMERGENCY: 'Fire Emergency',
     POLICE: 'Police',
-    WOMEN_SAFETY: 'Women safety',
-    STUDENT_SUPPORT: 'Student support',
-    ADMIN: 'Admin',
-    OTHER: 'Other',
-  }[category] || 'Emergency'
+    WOMEN_SAFETY: 'Women Safety',
+    ANTI_RAGGING: 'Anti-Ragging',
+    TRANSPORT_EMERGENCY: 'Transport Emergency',
+    ADMINISTRATION_EMERGENCY: 'Administration Emergency',
+    OTHER_EMERGENCY: 'Other Emergency',
+    MEDICAL: 'Medical Emergency',
+    SECURITY: 'Campus Security',
+    FIRE: 'Fire Emergency',
+    STUDENT_SUPPORT: 'Anti-Ragging',
+    ADMIN: 'Administration Emergency',
+    OTHER: 'Other Emergency',
+  }[category] || String(category || '').replace(/_/g, ' ')
 }
 
 function sectionLabel(id) { return SECTIONS.find(([key]) => key === id)?.[1] || 'Complaints & suggestions' }

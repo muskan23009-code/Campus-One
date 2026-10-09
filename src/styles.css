@@ -748,6 +748,41 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .emergency-status-badge.inactive { background: #f4f1ef; color: #8c5e52; }
 .emergency-primary-badge { background: #edf3ff; color: #3a5fa5; }
 .emergency-action-group { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.emergency-center-shell { display: flex; flex-direction: column; gap: 18px; padding: 18px 18px 12px; background: linear-gradient(180deg, #fff8f6 0%, #fff 100%); border: 1px solid #f0dfd9; border-radius: 3px; }
+.emergency-header { display: flex; align-items: center; gap: 14px; padding: 6px 2px 0; }
+.emergency-icon { display: grid; place-items: center; width: 44px; height: 44px; background: #f7eae6; color: #9f5d4f; border-radius: 12px; }
+.emergency-header h2 { margin: 4px 0 6px; font-size: 25px; line-height: 1.15; }
+.emergency-header p { max-width: 760px; color: #6d756c; font-size: 11px; line-height: 1.7; }
+.emergency-contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.emergency-contact-card { display: flex; flex-direction: column; gap: 12px; min-height: 210px; padding: 15px; background: #fff; border: 1px solid #eef0ec; border-radius: 12px; box-shadow: 0 10px 30px rgba(42, 50, 38, 0.04); }
+.emergency-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.emergency-card-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 82px; padding: 5px 8px; color: #7a5a43; background: #f8efe8; border-radius: 999px; font-size: 8px; font-weight: 700; letter-spacing: .48px; text-transform: uppercase; }
+.emergency-card-status { color: #3a6e52; background: #eaf5ee; border-radius: 999px; padding: 5px 8px; font-size: 8px; font-weight: 700; letter-spacing: .45px; }
+.emergency-contact-card h3 { margin: 0; color: #243129; font-size: 17px; }
+.emergency-contact-card p { margin: 0; color: #758078; font-size: 10px; line-height: 1.7; }
+.emergency-card-meta { display: flex; flex-direction: column; gap: 4px; margin-top: auto; color: #4d5d4d; font-size: 9px; }
+.emergency-card-meta span { display: block; }
+.emergency-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.emergency-call-button, .emergency-map-link { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 12px; border-radius: 6px; font-size: 9px; font-weight: 700; letter-spacing: .45px; text-transform: uppercase; text-decoration: none; }
+.emergency-call-button { background: linear-gradient(135deg, #9b4a41 0%, #c55d52 100%); color: #fff; }
+.emergency-call-button.disabled { background: #eceae7; color: #7d857d; cursor: not-allowed; pointer-events: none; }
+.emergency-map-link { background: #edf2ee; color: #2a3d36; }
+.emergency-instruction { color: #846a62; font-size: 8px; }
+.emergency-location-panel { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.emergency-location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.emergency-location-card { display: flex; flex-direction: column; gap: 8px; min-height: 150px; padding: 14px; background: #fff; border: 1px solid #edf0ec; border-radius: 10px; }
+.emergency-location-card strong { color: #213227; font-size: 13px; }
+.emergency-location-card span { color: #6d796d; font-size: 10px; line-height: 1.7; }
+.emergency-location-card a { margin-top: auto; display: inline-flex; align-items: center; justify-content: center; width: fit-content; padding: 7px 10px; border-radius: 5px; background: #eaf3ee; color: #2f4c3d; text-decoration: none; font-size: 8px; font-weight: 700; letter-spacing: .45px; }
+.emergency-filter-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.emergency-filter-group select { min-height: 34px; padding: 0 10px; color: #4f5d52; background: #fff; border: 1px solid #e7eae3; border-radius: 2px; }
+.emergency-quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.emergency-quick-button { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; background: #fff; border: 1px solid #e9efe5; border-radius: 999px; color: #2c3d35; text-decoration: none; font-size: 9px; font-weight: 700; letter-spacing: .45px; text-transform: uppercase; box-shadow: 0 8px 18px rgba(57, 67, 59, 0.03); }
+.emergency-quick-button:hover { border-color: #dfe8dd; transform: translateY(-1px); }
+.emergency-section-block { display: flex; flex-direction: column; gap: 12px; }
+.emergency-hostel-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.emergency-hostel-group { display: flex; flex-direction: column; gap: 12px; padding: 14px; background: #fbf9f7; border: 1px solid #efe4dd; border-radius: 12px; }
+.emergency-hostel-group h3 { margin: 0; color: #2f3f37; font-size: 13px; }
 .module-link { padding: 0; background: transparent; color: #3d5b49; border: 0; font-size: 9px; font-weight: 700; letter-spacing: .45px; cursor: pointer; }
 .module-link.danger { color: #7d4545; }
 .emergency-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -785,6 +820,11 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
   .complaint-admin-controls { flex: 1 1 100%; margin-left: 40px; }
   .complaint-admin-controls select { max-width: 100%; }
   .module-row { flex-wrap: wrap; }
+  .emergency-header { align-items: flex-start; }
+  .emergency-header h2 { font-size: 20px; }
+  .emergency-contact-grid, .emergency-location-grid, .emergency-hostel-groups { grid-template-columns: 1fr; }
+  .emergency-filter-group { width: 100%; }
+  .emergency-filter-group select { width: 100%; }
   .complaint-status-select { margin-left: 30px; }
   .user-dialog { width: min(100%,420px); }
   .setup-form { max-height: 49vh; }

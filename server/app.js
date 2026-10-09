@@ -1099,9 +1099,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!canAccess(user, CAMPUS_MODULES[collection])) return reject(response, 403, 'Your role cannot access this campus service.')
       if (request.method === 'GET') {
         const data = await store.read()
-        const records = campusRecords(data, collection).filter(isRecordActive)
+        const records = collection === 'emergency' && user.role === ROLES.ADMIN
+          ? campusRecords(data, collection)
+          : campusRecords(data, collection).filter(isRecordActive)
         if (collection === 'emergency') {
-          records.sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0) || String(left.name || left.title).localeCompare(String(right.name || right.title)))
+          records.sort((left, right) => (Number(left.display_order ?? left.priority ?? 999) - Number(right.display_order ?? right.priority ?? 999)) || String(left.name || left.title).localeCompare(String(right.name || right.title)))
         }
         return json(response, 200, { records })
       }
@@ -1119,6 +1121,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
             record.created_by = user.id
             record.title = record.name
             record.description = `${record.designation || 'Campus support'}${record.location ? ` · ${record.location}` : ''}${record.description ? ` · ${record.description}` : ''}`.trim()
+            record.priority = Number(record.priority ?? record.display_order ?? 1) || 1
           }
           records.unshift(record)
           if (records.length > 200) throw Object.assign(new Error('This campus collection is full.'), { status: 400 })
@@ -1142,6 +1145,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
             record.designation = patch.designation
             record.description = patch.description
             record.location = patch.location
+            record.location_url = patch.location_url
+            record.hostel_name = patch.hostel_name
+            record.priority = patch.priority
             record.available_24x7 = patch.available_24x7
             record.is_primary = patch.is_primary
             record.is_active = patch.is_active
@@ -1353,16 +1359,18 @@ function emergencyCategoryLabel(value) {
 function validateEmergencyContact(input, existing = {}) {
   const name = safeText(input.name ?? input.title ?? existing.name ?? existing.title, 120)
   const category = String(input.category ?? existing.category ?? '').trim().toUpperCase()
-  const phoneNumber = safeText(input.phone_number ?? input.phoneNumber ?? existing.phone_number ?? existing.phoneNumber ?? '', 30)
+  const phoneNumber = safeText(input.phone_number ?? input.phoneNumber ?? input.phone ?? existing.phone_number ?? existing.phoneNumber ?? existing.phone ?? '', 30)
   const alternatePhone = safeText(input.alternate_phone ?? input.alternatePhone ?? existing.alternate_phone ?? existing.alternatePhone ?? '', 30)
   const designation = safeText(input.designation ?? existing.designation ?? '', 120)
   const description = safeText(input.description ?? existing.description ?? '', 500)
   const location = safeText(input.location ?? existing.location ?? '', 160)
+  const hostelName = safeText(input.hostel_name ?? input.hostelName ?? existing.hostel_name ?? existing.hostelName ?? '', 120)
   const locationUrl = safeText(input.location_url ?? input.map_url ?? existing.location_url ?? existing.map_url ?? '', 500)
   const available24x7 = input.available_24x7 !== undefined ? Boolean(input.available_24x7) : Boolean(existing.available_24x7 ?? true)
   const isPrimary = input.is_primary !== undefined ? Boolean(input.is_primary) : Boolean(existing.is_primary ?? false)
   const isActive = input.is_active !== undefined ? Boolean(input.is_active) : Boolean(existing.is_active ?? existing.active ?? true)
-  const displayOrder = Number.isInteger(Number(input.display_order ?? existing.display_order ?? 1)) ? Number(input.display_order ?? existing.display_order ?? 1) : 1
+  const priority = Number.isInteger(Number(input.priority ?? existing.priority ?? input.display_order ?? existing.display_order ?? 1)) ? Number(input.priority ?? existing.priority ?? input.display_order ?? existing.display_order ?? 1) : 1
+  const displayOrder = Number.isInteger(Number(input.display_order ?? existing.display_order ?? priority)) ? Number(input.display_order ?? existing.display_order ?? priority) : priority
   const isValidPhone = (value) => {
     const candidate = String(value || '').trim()
     if (!candidate) return false
@@ -1393,12 +1401,14 @@ function validateEmergencyContact(input, existing = {}) {
     designation,
     description,
     location,
+    hostel_name: hostelName,
     location_url: locationUrl,
     available_24x7: available24x7,
     is_primary: isPrimary,
     is_active: isActive,
     active: isActive,
     display_order: displayOrder,
+    priority,
     title: name,
     created_at: existing.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
