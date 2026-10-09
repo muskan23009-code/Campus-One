@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { APP_ROLES, ROLE_START_PAGES, canSeePage } from '../src/auth/access.js'
-import { navigationGroups } from '../src/data/campusData.js'
+import { moduleDetails, navigationGroups } from '../src/data/campusData.js'
+import { canAccess as canAccessCampusModule, DEFAULT_CAMPUS_DATA, MANAGEMENT_COLLECTIONS } from '../server/policy.js'
 
 test('Complaint & Issue Tracker stays available to existing roles and not Canteen Staff', () => {
   const complaintItems = navigationGroups.flatMap((group) => group.items).filter((item) => item.id === 'complaints')
@@ -24,11 +25,27 @@ test('Lost & Found is a dedicated main section visible to all five roles', () =>
 
 test('student routes exclude every management page', () => {
   const student = { id: 'PM-S1047', name: 'Student Example', role: APP_ROLES.STUDENT, modules: [] }
-  for (const page of ['overview', 'copilot', 'notices', 'food', 'navigation', 'directory', 'complaints', 'sports', 'events', 'library', 'hostel', 'transport', 'lost-found', 'emergency']) {
+  for (const page of ['overview', 'copilot', 'notices', 'food', 'navigation', 'directory', 'complaints', 'sports', 'events', 'hostel', 'lost-found', 'emergency']) {
     assert.equal(canSeePage(student, page), true, `Student should be able to access ${page}`)
   }
   for (const page of ['analytics', 'users', 'campus-management', 'sports-management']) {
     assert.equal(canSeePage(student, page), false, `Student must not access ${page}`)
+  }
+})
+
+test('Transport and Library routes, permissions, and campus collections are removed', () => {
+  const removedModules = ['transport', 'library']
+  const navigationItems = navigationGroups.flatMap((group) => group.items)
+  for (const moduleId of removedModules) {
+    assert.equal(navigationItems.some((item) => item.id === moduleId), false, `${moduleId} must not appear in navigation`)
+    assert.equal(Object.hasOwn(moduleDetails, moduleId), false, `${moduleId} must not have a module page`)
+    assert.equal(MANAGEMENT_COLLECTIONS.includes(moduleId), false, `${moduleId} must not expose a campus collection`)
+    assert.equal(Object.hasOwn(DEFAULT_CAMPUS_DATA, moduleId), false, `${moduleId} must not have a default campus collection`)
+    for (const role of Object.values(APP_ROLES)) {
+      const user = { id: 'test-user', name: 'Test User', role, modules: removedModules }
+      assert.equal(canSeePage(user, moduleId), false, `${role} must not access ${moduleId}`)
+      assert.equal(canAccessCampusModule(user, moduleId), false, `${role} must not access the ${moduleId} campus API`)
+    }
   }
 })
 
@@ -52,7 +69,7 @@ test('sports captain receives complaint management and sports tools but not admi
   assert.equal(canSeePage(captain, 'sports'), true)
   assert.equal(canSeePage(captain, 'complaints'), true)
   assert.equal(canSeePage(captain, 'lost-found'), true)
-  for (const page of ['canteen', 'copilot', 'library', 'hostel', 'transport', 'directory', 'emergency']) {
+  for (const page of ['canteen', 'copilot', 'hostel', 'directory', 'emergency']) {
     assert.equal(canSeePage(captain, page), true, `Sports Captain should have student access to ${page}`)
   }
   for (const page of ['users', 'analytics', 'campus-management']) {
@@ -78,9 +95,16 @@ test('Administration can open Canteen as a customer, without staff controls', ()
   assert.equal(canSeePage(administrator, 'canteen'), true)
 })
 
+test('Canteen route remains available to customer roles', () => {
+  const customerRoles = [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN]
+  for (const role of customerRoles) {
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [] }, 'canteen'), true, `${role} can access the Food & Dine In Canteen section`)
+  }
+})
+
 test('administration receives every management capability', () => {
   const administrator = { id: 'PM-AD01', name: 'Admin Example', role: APP_ROLES.ADMIN, modules: [] }
-  for (const page of ['overview', 'users', 'analytics', 'campus-management', 'sports-management', 'complaints', 'transport', 'emergency', 'canteen']) {
+  for (const page of ['overview', 'users', 'analytics', 'campus-management', 'sports-management', 'complaints', 'emergency', 'canteen']) {
     assert.equal(canSeePage(administrator, page), true, `Administration should access ${page}`)
   }
   assert.equal(canSeePage(administrator, 'lost-found'), true)

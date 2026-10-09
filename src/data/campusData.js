@@ -5,8 +5,7 @@ export const navigationGroups = [
       { id: 'overview', label: 'Overview', icon: 'LayoutDashboard' },
       { id: 'copilot', label: 'AI Copilot', icon: 'Sparkles', badge: 'AI' },
       { id: 'notices', label: 'Notices & Announcements', icon: 'Megaphone' },
-      { id: 'food', label: 'Food & dining', icon: 'Utensils' },
-      { id: 'canteen', label: 'Canteen', icon: 'Utensils' },
+      { id: 'food', label: 'Food & Dine In', icon: 'Utensils' },
       { id: 'navigation', label: 'Campus map', icon: 'Map' },
     ],
   },
@@ -16,7 +15,6 @@ export const navigationGroups = [
       { id: 'directory', label: 'Campus database', icon: 'ContactRound' },
       { id: 'sports', label: 'Sports & wellness', icon: 'Activity' },
       { id: 'events', label: 'Events & clubs', icon: 'CalendarDays' },
-      { id: 'library', label: 'Library', icon: 'LibraryBig' },
     ],
   },
   {
@@ -30,7 +28,6 @@ export const navigationGroups = [
     label: 'MORE',
     items: [
       { id: 'hostel', label: 'Hostel', icon: 'Building2' },
-      { id: 'transport', label: 'Transport', icon: 'Bus' },
       { id: 'emergency', label: 'Emergency', icon: 'ShieldAlert' },
       { id: 'analytics', label: 'Campus insights', icon: 'ChartNoAxesCombined' },
     ],
@@ -68,7 +65,7 @@ export const moduleDetails = {
     icon: 'Sparkles',
     accent: 'mint',
     stats: [['Always on', 'Available 24/7'], ['Made for you', 'Campus-trained AI'], ['Good to know', 'Private conversations']],
-    suggestions: ['When does the library close today?', 'How do I apply for a bonafide certificate?', 'What is happening on campus this week?', 'Show my bus route and next pickup time'],
+    suggestions: ['Where can I find campus dining?', 'How do I apply for a bonafide certificate?', 'What is happening on campus this week?'],
     rows: [
       ['Academics', 'How to find your next exam, class or assignment deadline.', 'Ask about coursework'],
       ['Campus services', 'Get a straight answer about offices, hours and processes.', 'Find a service'],
@@ -86,22 +83,16 @@ export const moduleDetails = {
       ['Mid-semester examination schedule', 'Academics · Today, 10:32 am · Applies to all second-year students', 'Review schedule'],
       ['Scholarship renewal applications', 'Student affairs · Today, 9:15 am · Deadline approaching', 'Submit application'],
       ['Campus blood donation drive', 'Community · Yesterday, 4:40 pm · Voluntary', 'See event details'],
-      ['Library extended hours this week', 'Library · Oct 2, 11:20 am · Applies to all students', 'View library hours'],
     ],
   },
   food: {
-    eyebrow: 'GOOD FOOD, NO GUESSWORK',
-    title: 'Food & dining',
-    description: 'See what is cooking, skip the queue and find a seat that suits you.',
+    eyebrow: 'CAMPUS DINING',
+    title: 'Food & Dine In',
+    description: 'Open the configured Canteen menu or view College Mess information.',
     icon: 'Utensils',
     accent: 'amber',
-    stats: [['North mess', 'Moderately busy'], ['West canteen', '12-minute wait'], ['Breakfast', 'Served until 10:30']],
-    rows: [
-      ['Today at North mess', 'Lunch · 12:00–2:30 pm · 68% capacity · Moderate wait', 'See today’s menu'],
-      ['Sunrise canteen', 'Grilled paneer wrap · ₹90 · Ready in about 12 minutes', 'Pre-order food'],
-      ['Garden café', 'Open · Quieter seating · Fresh coffee and snacks', 'Find a table'],
-      ['Meal plan & payments', 'View your campus food balance and transaction history.', 'Manage account'],
-    ],
+    stats: [],
+    rows: [],
   },
   navigation: {
     eyebrow: 'YOUR NEXT DESTINATION',
@@ -112,7 +103,6 @@ export const moduleDetails = {
     stats: [['Search', 'Places & buildings'], ['Walking route', 'Available campus-wide'], ['3 locations', 'Saved favorites']],
     rows: [
       ['Academic block A', 'Classrooms · Engineering · First and second floor', 'Get directions'],
-      ['Main library', 'Study · 4-minute walk · Open until 8:00 pm', 'Get directions'],
       ['North student mess', 'Food · 6-minute walk · Moderate wait', 'Get directions'],
       ['Infirmary', 'Health · Ground floor, student services building', 'Get directions'],
     ],
@@ -141,14 +131,6 @@ export const moduleDetails = {
     stats: [['5 upcoming', 'Events this week'], ['12 active', 'Campus clubs'], ['Your calendar', '2 saved events']],
     rows: [['Design week · Opening night', 'Thursday, Oct 8 · 5:00 pm · Main auditorium', 'Explore event'], ['Open mic at the courtyard', 'Friday, Oct 9 · 6:30 pm · Student courtyard', 'Save a place'], ['Photography club walk', 'Saturday, Oct 10 · 7:00 am · Main gate', 'Join the group']],
   },
-  library: {
-    eyebrow: 'A LITTLE QUIETER. A LOT TO DISCOVER.',
-    title: 'Library',
-    description: 'Check opening hours, search available study spaces, and take your reading list anywhere.',
-    icon: 'LibraryBig', accent: 'mint',
-    stats: [['Open today', 'Until 8:00 pm'], ['Quiet study', '42% occupied'], ['2 books', 'Checked out by you']],
-    rows: [['Central library', 'Study floors · Open · Closes at 8:00 pm', 'Find a seat'], ['Engineering reading room', 'Academic Block A · Open · Quiet right now', 'See availability'], ['Search books & journals', 'Browse the campus collection and check availability.', 'Explore catalogue'], ['Your checked-out books', '2 items · Next return due Oct 14', 'Manage loans']],
-  },
   hostel: {
     eyebrow: 'MADE FOR YOUR EVERYDAY',
     title: 'Hostel life',
@@ -156,14 +138,6 @@ export const moduleDetails = {
     icon: 'Building2', accent: 'blue',
     stats: [['Your room', 'B-204 · North residence'], ['1 open', 'Maintenance requests'], ['Quiet hours', '10:00 pm onwards']],
     rows: [['Room maintenance', 'Track your repair request or report a new issue.', 'View requests'], ['Hostel visitor registration', 'Register an upcoming guest visit with the warden.', 'Register visitor'], ['Residence notices', 'The latest updates from your hostel community.', 'Read updates']],
-  },
-  transport: {
-    eyebrow: 'FROM HERE TO THERE, EASILY',
-    title: 'Campus transport',
-    description: 'Look up bus stops, check departure times and keep track of your route.',
-    icon: 'Bus', accent: 'blue',
-    stats: [['Your route', 'S-04 · West campus'], ['Next pickup', 'Gate 2 · 8 minutes'], ['On schedule', 'No known delays']],
-    rows: [['Route S-04', 'West campus · Library · Student residence · 15-minute frequency', 'View this route'], ['Next shuttle', 'Gate 2 · Leaves in 8 minutes · On time', 'Track shuttle'], ['Campus accessibility', 'Request mobility assistance or a wheelchair-accessible vehicle.', 'Request assistance']],
   },
   'lost-found': {
     eyebrow: 'FOUND SOMETHING? LOOKING FOR IT?',
@@ -187,7 +161,7 @@ export const moduleDetails = {
     description: 'A clear operational picture for campus teams, with the context behind every number.',
     icon: 'ChartNoAxesCombined', accent: 'blue',
     stats: [['2,418', 'Students on campus'], ['94%', 'Campus services availability'], ['−18%', 'Dining peak wait this month']],
-    rows: [['Campus engagement', 'Events, facilities, programs · Updated today', 'View dashboard'], ['Dining & occupancy', 'Meal service demand, wait times, campus capacity', 'Explore insights'], ['Student wellbeing', 'Service usage and resolution trends · Aggregated', 'Review patterns'], ['Operations overview', 'Facilities, transport and open service requests', 'Open report']],
+    rows: [['Campus engagement', 'Events, facilities, programs · Updated today', 'View dashboard'], ['Dining & occupancy', 'Meal service demand, wait times, campus capacity', 'Explore insights'], ['Student wellbeing', 'Service usage and resolution trends · Aggregated', 'Review patterns'], ['Operations overview', 'Facilities, campus services and open service requests', 'Open report']],
   },
 }
 
@@ -199,7 +173,6 @@ export const notices = [
 
 export const campusPlaces = [
   { category: 'Academic', name: 'Academic Block A', detail: 'Engineering · Classrooms & faculty offices', color: 'place-terracotta', icon: 'GraduationCap' },
-  { category: 'Study', name: 'Central library', detail: 'Study halls · 8:00 am–8:00 pm', color: 'place-green', icon: 'LibraryBig' },
   { category: 'Food', name: 'North student mess', detail: 'Dining hall · Moderate occupancy', color: 'place-yellow', icon: 'Utensils' },
   { category: 'Health', name: 'Student health centre', detail: 'Infirmary · 8:00 am–8:00 pm', color: 'place-blue', icon: 'HeartPulse' },
 ]

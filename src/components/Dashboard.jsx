@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Check,
-  ChevronRight, Clock3, Compass, Flame, GraduationCap,
+  ChevronRight, Clock3, Flame, GraduationCap,
   HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils, Waves,
 } from 'lucide-react'
 import { campusPlaces, notices } from '../data/campusData'
@@ -65,7 +65,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
       <section className="metrics-row" aria-label="Campus snapshot">
         <div className="metric-card"><span className="metric-icon icon-rust"><CalendarDays size={17} /></span><div className="metric-copy"><span className="metric-label">YOUR NEXT CLASS</span><strong>Data structures</strong><span className="metric-sub">10:30 am · Block A, Room 204</span></div><span className="metric-indicator indicator-rust"><Clock3 size={13} /> IN 24 MIN</span></div>
         <div className="metric-card"><span className="metric-icon icon-leaf"><Waves size={18} /></span><div className="metric-copy"><span className="metric-label">NORTH MESS · MANUAL ESTIMATE</span><strong>{messEstimate?.crowdLevel ? `${messEstimate.crowdLevel} crowd` : 'Moderately busy'}</strong><span className="metric-sub">{messEstimate ? `${messEstimate.occupancyPercent ?? 68}% occupancy · ${messEstimate.estimatedWaitMinutes ?? 8} min wait` : '68% occupancy · 8 min wait'}</span></div><span className="occupancy-indicator"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
-        <div className="metric-card"><span className="metric-icon icon-blue"><Compass size={17} /></span><div className="metric-copy"><span className="metric-label">CAMPUS SHUTTLE</span><strong>Route S-04 · Gate 2</strong><span className="metric-sub">Next pickup in 8 minutes</span></div><span className="metric-direction">ON TIME <ArrowUpRight size={12} /></span></div>
       </section>
 
       <section className="main-dashboard-grid">
@@ -94,6 +93,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 }
 
 function PlaceIcon({ name }) {
-  const icons = { GraduationCap: <GraduationCap size={17} />, LibraryBig: <Compass size={17} />, Utensils: <Utensils size={17} />, HeartPulse: <HeartPulse size={17} /> }
+  const icons = { GraduationCap: <GraduationCap size={17} />, Utensils: <Utensils size={17} />, HeartPulse: <HeartPulse size={17} /> }
   return icons[name]
 }

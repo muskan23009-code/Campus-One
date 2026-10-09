@@ -13,7 +13,7 @@ const LABELS = {
   RESOLVED: 'Resolved', REJECTED: 'Rejected',
 }
 
-export default function ComplaintCenter({ user, initialComplaintId = '', onNotify }) {
+export default function ComplaintCenter({ user, initialComplaintId = '', initialCategory = '', initialOpen = false, onNotify }) {
   const [complaints, setComplaints] = useState([])
   const [counts, setCounts] = useState({})
   const [categories, setCategories] = useState(CATEGORIES)
@@ -21,9 +21,9 @@ export default function ComplaintCenter({ user, initialComplaintId = '', onNotif
   const [selectedId, setSelectedId] = useState(initialComplaintId)
   const [selected, setSelected] = useState(null)
   const [filters, setFilters] = useState({ status: '', category: '', department: '', role: '', date: '' })
-  const [formOpen, setFormOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(initialOpen)
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState(CATEGORIES[0])
+  const [category, setCategory] = useState(initialCategory || CATEGORIES[0])
   const [description, setDescription] = useState('')
   const [photo, setPhoto] = useState(null)
   const [preview, setPreview] = useState('')
@@ -38,6 +38,12 @@ export default function ComplaintCenter({ user, initialComplaintId = '', onNotif
   useEffect(() => {
     setSelectedId(initialComplaintId)
   }, [initialComplaintId])
+
+  useEffect(() => {
+    if (!initialCategory) return
+    if (CATEGORIES.includes(initialCategory)) setCategory(initialCategory)
+    setFormOpen(initialOpen)
+  }, [initialCategory, initialOpen])
 
   useEffect(() => {
     if (user.role !== 'Administration') return undefined

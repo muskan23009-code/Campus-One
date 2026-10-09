@@ -21,6 +21,8 @@ const COMPLAINT_CATEGORIES = Object.freeze([
   'Sports', 'Transport', 'Infrastructure', 'Security', 'IT/Technical', 'Other',
 ])
 const COMPLAINT_STATUSES = Object.freeze(['SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'])
+const MESS_MEALS = Object.freeze(['Breakfast', 'Lunch', 'Dinner'])
+const MESS_CROWD_LEVELS = Object.freeze(['Low', 'Medium', 'High'])
 const LOST_FOUND_CATEGORIES = Object.freeze([
   'ID Card', 'Mobile/Device', 'Books/Notes', 'Wallet/Bag', 'Keys', 'Clothing',
   'Accessories', 'Sports Equipment', 'Other',
@@ -33,8 +35,8 @@ const LOST_FOUND_PHOTO_BYTES_LIMIT = 1_000_000
 const PASSWORD_ATTEMPT_LIMIT = 10
 const PASSWORD_ATTEMPT_WINDOW = 15 * 60 * 1000
 const CAMPUS_MODULES = {
-  notices: 'notices', food: 'food', events: 'events', library: 'library',
-  hostel: 'hostel', transport: 'transport', directory: 'directory', emergency: 'emergency',
+  notices: 'notices', food: 'food', events: 'events',
+  hostel: 'hostel', directory: 'directory', emergency: 'emergency',
 }
 const DUMMY_CREDENTIALS = await hashPassword(randomUUID())
 const MIME_TYPES = {
@@ -869,6 +871,51 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return json(response, 200, { order: publicCanteenOrder(result) })
     }
 
+    if (pathname === '/api/mess' && request.method === 'GET') {
+      if (!canAccess(user, 'food')) return reject(response, 403, 'Your role cannot access College Mess information.')
+      const data = await store.read()
+      const notices = (data.messNotices || []).filter((notice) => user.role === ROLES.ADMIN || notice.active)
+      return json(response, 200, {
+        settings: normalizeMessSettings(data.messSettings),
+        notices: notices.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map(publicMessNotice),
+      })
+    }
+
+    if (pathname === '/api/mess/settings' && request.method === 'PATCH') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage College Mess settings.')
+      const settings = validateMessSettings(await body(request))
+      await store.transact((data) => { data.messSettings = settings })
+      return json(response, 200, { settings })
+    }
+
+    if (pathname === '/api/mess/notices' && request.method === 'POST') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to publish College Mess notices.')
+      const input = validateMessNotice(await body(request))
+      const notice = await store.transact((data) => {
+        data.messNotices ??= []
+        const now = new Date().toISOString()
+        const created = { id: randomUUID(), ...input, active: true, createdBy: user.id, createdAt: now, updatedAt: now }
+        data.messNotices.unshift(created)
+        notifyMessStudents(data, created, addNotification)
+        return created
+      })
+      return json(response, 201, { notice: publicMessNotice(notice) })
+    }
+
+    const messNoticeRoute = pathname.match(/^\/api\/mess\/notices\/([^/]+)$/)
+    if (messNoticeRoute && request.method === 'PATCH') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage College Mess notices.')
+      const patch = validateMessNoticePatch(await body(request))
+      const notice = await store.transact((data) => {
+        const current = (data.messNotices || []).find((entry) => entry.id === decodeURIComponent(messNoticeRoute[1]))
+        if (!current) throw Object.assign(new Error('College Mess notice not found.'), { status: 404 })
+        Object.assign(current, patch, { updatedAt: new Date().toISOString() })
+        if (current.active) notifyMessStudents(data, current, addNotification)
+        return current
+      })
+      return json(response, 200, { notice: publicMessNotice(notice) })
+    }
+
     if (pathname === '/api/food/orders' && request.method === 'GET') {
       if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Only Campus One customer roles can access canteen orders.')
       const data = await store.read()
@@ -1431,11 +1478,13 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsManager = [ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentSportsRole = [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentEventRegistrationPath = /^\/api\/sports\/events\/[^/]+\/register$/.test(pathname) && request.method === 'POST'
+    const studentSportsMembershipApplicationPath = pathname === '/api/sports/membership-applications' && request.method === 'POST'
     const sportsApplicationCancelPath = /^\/api\/sports\/applications\/[^/]+$/.test(pathname) && request.method === 'PATCH'
     const sportsManagementPath = pathname.startsWith('/api/sports/')
       && pathname !== '/api/sports/student'
       && !(pathname === '/api/sports/events' && request.method === 'GET')
       && !studentEventRegistrationPath
+      && !studentSportsMembershipApplicationPath
       && !sportsApplicationCancelPath
     if (sportsManagementPath && !sportsManager) return reject(response, 403, 'Sports Captain or Administration access is required.')
 
@@ -1450,6 +1499,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const data = await readSportsData(store)
       const ownRegistrations = data.sportsRegistrations.filter((entry) => entry.studentId === user.id)
         .map((entry) => publicSportsRegistration(entry, data))
+      const ownMembershipApplications = data.sportsMembershipApplications.filter((entry) => entry.studentId === user.id)
+      const activeTeams = data.sportsTeams.filter((team) => team.status === 'ACTIVE' && sportFor(data, team.sportId))
       const participations = activeSportsParticipations(data, user.id)
       const sportIds = new Set(participations.map((entry) => entry.sportId))
       const authorizedTeams = data.sportsTeams.filter((team) => sportIds.has(team.sportId) && team.status === 'ACTIVE')
@@ -1459,6 +1510,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
         events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED'),
         registrations: ownRegistrations,
+        membershipApplications: ownMembershipApplications,
+        availableTeams: activeTeams.map(({ id, name, sportId, sportName, category, teamType, description }) => ({ id, name, sportId, sportName, category, teamType, description })),
         participations,
         mySports: [...sportIds].map((sportId) => {
           const sport = (data.sports ?? DEFAULT_SPORTS_DATA).find((entry) => entry.id === sportId)
@@ -1471,6 +1524,88 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         achievements: data.sportsAchievements.filter((entry) => sportIds.has(entry.sportId) && (entry.studentId === user.id || entry.published === true && Boolean(entry.teamId || entry.sportId))),
         notices: data.sportsNotices.filter((entry) => noticeIds.has(entry.id)).map(publicSportsNotice),
       })
+    }
+
+    if (studentSportsMembershipApplicationPath) {
+      if (![ROLES.STUDENT, ROLES.SPORTS].includes(user.role)) return reject(response, 403, 'Only students can apply to join a sport or team.')
+      const input = await body(request)
+      const application = await store.transact((data) => {
+        data.sportsMembershipApplications ??= []
+        const teamId = safeText(input.teamId, 64)
+        const requestedSportId = safeText(input.sportId, 64)
+        if (Boolean(teamId) === Boolean(requestedSportId)) throw Object.assign(new Error('Choose exactly one sport or team to apply for.'), { status: 400 })
+        const team = teamId ? data.sportsTeams.find((entry) => entry.id === teamId && entry.status === 'ACTIVE') : null
+        if (teamId && !team) throw Object.assign(new Error('Choose an active sports team.'), { status: 404 })
+        const sport = sportFor(data, team?.sportId || requestedSportId)
+        if (!sport) throw Object.assign(new Error('Choose an active sport.'), { status: 404 })
+        if (team && team.sportId !== sport.id) throw Object.assign(new Error('The selected team does not belong to this sport.'), { status: 400 })
+        if (activeSportsParticipations(data, user.id).some((entry) => entry.sportId === sport.id && (!team || entry.teamId === team.id))) {
+          throw Object.assign(new Error(team ? 'You are already a member of this team.' : 'You are already participating in this sport.'), { status: 409 })
+        }
+        if (data.sportsMembershipApplications.some((entry) =>
+          entry.studentId === user.id &&
+          (team ? entry.teamId === team.id : entry.sportId === sport.id && !entry.teamId) &&
+          !['REJECTED', 'CANCELLED'].includes(entry.status))) {
+          throw Object.assign(new Error('You already have an application for this sport or team.'), { status: 409 })
+        }
+        const now = new Date().toISOString()
+        const created = {
+          id: randomUUID(), type: team ? 'TEAM' : 'SPORT',
+          sportId: sport.id, sportName: sport.title,
+          teamId: team?.id || '', teamName: team?.name || '',
+          studentId: user.id, studentName: user.name,
+          department: user.department || '', semester: user.semester || '',
+          status: 'APPLIED', createdAt: now, updatedAt: now,
+        }
+        data.sportsMembershipApplications.unshift(created)
+        for (const captain of data.users.filter((candidate) => candidate.active && candidate.role === ROLES.SPORTS)) {
+          addNotification(data, {
+            recipientUserId: captain.id,
+            title: 'New sports membership application',
+            message: `${user.name} applied to join ${team?.name || sport.title}.`,
+            referenceId: created.id, target: 'sports-management',
+          })
+        }
+        return created
+      })
+      return json(response, 201, { application })
+    }
+
+    const sportsMembershipApplicationRoute = pathname.match(/^\/api\/sports\/membership-applications\/([^/]+)$/)
+    if (sportsMembershipApplicationRoute && request.method === 'PATCH') {
+      const { status } = await body(request)
+      if (!['APPROVED', 'REJECTED'].includes(status)) return reject(response, 400, 'Choose Approved or Rejected.')
+      const updated = await store.transact((data) => {
+        const application = (data.sportsMembershipApplications || []).find((entry) => entry.id === decodeURIComponent(sportsMembershipApplicationRoute[1]))
+        if (!application) throw Object.assign(new Error('Sports membership application not found.'), { status: 404 })
+        if (application.status !== 'APPLIED') throw Object.assign(new Error('This application has already been reviewed.'), { status: 409 })
+        const student = activeStudent(data, application.studentId)
+        if (!student) throw Object.assign(new Error('The applicant is no longer an active student.'), { status: 409 })
+        if (status === 'APPROVED') {
+          const sport = sportFor(data, application.sportId)
+          if (!sport) throw Object.assign(new Error('This sport is no longer active.'), { status: 409 })
+          if (application.teamId) {
+            const team = data.sportsTeams.find((entry) => entry.id === application.teamId && entry.status === 'ACTIVE')
+            if (!team || team.sportId !== sport.id) throw Object.assign(new Error('This team is no longer active.'), { status: 409 })
+            if (team.members.some((member) => member.studentId === student.id && member.status === 'ACTIVE')) throw Object.assign(new Error('This student is already a member of this team.'), { status: 409 })
+            ensureTeamMember(team, student)
+            team.updatedAt = new Date().toISOString()
+            ensureSportsParticipation(data, student, sport.id, sport.title, { teamId: team.id, source: 'TEAM' })
+          } else {
+            ensureSportsParticipation(data, student, sport.id, sport.title, { source: 'SPORT' })
+          }
+        }
+        application.status = status
+        application.updatedAt = new Date().toISOString()
+        addNotification(data, {
+          recipientUserId: student.id,
+          title: `Sports application ${status.toLowerCase()}`,
+          message: `${application.teamName || application.sportName} · ${status.toLowerCase()}.`,
+          referenceId: application.id, target: 'sports',
+        })
+        return application
+      })
+      return json(response, 200, { application: updated })
     }
 
     if (sportsApplicationCancelPath) {
@@ -1493,6 +1628,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const upcomingMatches = data.sportsSchedules.filter((entry) => entry.kind === 'MATCH' && Date.parse(`${entry.date}T${entry.time || '23:59'}:00`) >= Date.now())
       const activities = [
         ...data.sportsRegistrations.map((entry) => ({ id: entry.id, type: 'Registration', title: `${entry.studentName} registered for ${entry.eventName}`, createdAt: entry.createdAt })),
+        ...(data.sportsMembershipApplications || []).map((entry) => ({ id: entry.id, type: 'Membership application', title: `${entry.studentName} applied to join ${entry.teamName || entry.sportName}`, createdAt: entry.createdAt })),
         ...data.sportsEvents.map((entry) => ({ id: entry.id, type: 'Event', title: entry.name, createdAt: entry.createdAt })),
         ...data.sportsTeams.map((entry) => ({ id: entry.id, type: 'Team', title: `Team created: ${entry.name}`, createdAt: entry.createdAt })),
         ...data.sportsSchedules.map((entry) => ({ id: entry.id, type: 'Schedule', title: `Scheduled: ${entry.title}`, createdAt: entry.createdAt })),
@@ -1504,6 +1640,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
         events: data.sportsEvents,
         registrations: data.sportsRegistrations.map((entry) => publicSportsRegistration(entry, data)),
+        membershipApplications: data.sportsMembershipApplications || [],
         teams: data.sportsTeams.map((team) => publicSportsTeam(team, data.users)),
         schedules: data.sportsSchedules,
         attendance: data.sportsAttendance,
@@ -1516,7 +1653,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           totalPlayers: new Set(data.sportsTeams.flatMap((team) => (team.members || []).filter((entry) => entry.status === 'ACTIVE' && activeStudent(data, entry.studentId)).map((entry) => entry.studentId))).size,
           totalTeams: data.sportsTeams.length,
           upcomingEvents: upcomingEvents.length + upcomingMatches.length,
-          pendingRegistrations: data.sportsRegistrations.filter((entry) => ['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(entry.status)).length,
+          pendingRegistrations: data.sportsRegistrations.filter((entry) => ['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(entry.status)).length + (data.sportsMembershipApplications || []).filter((entry) => entry.status === 'APPLIED').length,
+          pendingMembershipApplications: (data.sportsMembershipApplications || []).filter((entry) => entry.status === 'APPLIED').length,
           activeTeams: data.sportsTeams.filter((team) => team.status === 'ACTIVE').length,
           recentActivities: activities.filter((entry) => entry.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8),
         },
@@ -1604,6 +1742,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         if (!validEventEligibility(event, user)) throw Object.assign(new Error('You are not eligible to register for this event.'), { status: 403 })
         const now = new Date()
         if (Date.parse(`${event.registrationDeadline}T23:59:59`) < now.getTime()) throw Object.assign(new Error('The registration deadline has passed.'), { status: 409 })
+        if (event.date < now.toISOString().slice(0, 10)) throw Object.assign(new Error('This event or trial has already taken place.'), { status: 409 })
         if (data.sportsRegistrations.some((entry) => entry.eventId === event.id && entry.studentId === user.id && !['REJECTED', 'CANCELLED'].includes(entry.status))) throw Object.assign(new Error('You already have an application for this event.'), { status: 409 })
         if (event.maxParticipants && data.sportsRegistrations.filter((entry) => entry.eventId === event.id && !['REJECTED', 'CANCELLED'].includes(entry.status)).length >= event.maxParticipants) throw Object.assign(new Error('This event has reached its participant limit.'), { status: 409 })
         const created = { id: randomUUID(), eventId: event.id, eventName: event.name, sportId: event.sportId, sportName: event.sportName, studentId: user.id, studentName: user.name, department: user.department || '', semester: user.semester || '', mobile: user.mobile || '', status: 'APPLIED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
@@ -2308,6 +2447,89 @@ function validateCanteenItem(input) {
   const imageUrl = safeText(input.imageUrl, 500)
   if (imageUrl && !/^https:\/\/[^\s]+$/i.test(imageUrl)) throw Object.assign(new Error('Food images must use a secure HTTPS URL.'), { status: 400 })
   return { diet, category, name, description, size, price, imageUrl, available: input.available !== false }
+}
+
+function defaultMessSettings() {
+  return {
+    status: 'Closed',
+    timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '' }])),
+    crowdSchedule: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '', level: '' }])),
+  }
+}
+
+function normalizeMessSettings(settings) {
+  const defaults = defaultMessSettings()
+  if (!settings || typeof settings !== 'object') return defaults
+  const normalizeWindows = (source, includeLevel = false) => Object.fromEntries(MESS_MEALS.map((meal) => {
+    const value = source?.[meal] || {}
+    return [meal, {
+      start: typeof value.start === 'string' ? value.start : '',
+      end: typeof value.end === 'string' ? value.end : '',
+      ...(includeLevel ? { level: MESS_CROWD_LEVELS.includes(value.level) ? value.level : '' } : {}),
+    }]
+  }))
+  return {
+    status: settings.status === 'Open' ? 'Open' : 'Closed',
+    timings: normalizeWindows(settings.timings),
+    crowdSchedule: normalizeWindows(settings.crowdSchedule, true),
+  }
+}
+
+function validateTimeWindow(value, label, { level = false } = {}) {
+  const start = typeof value?.start === 'string' ? value.start : ''
+  const end = typeof value?.end === 'string' ? value.end : ''
+  const crowdLevel = typeof value?.level === 'string' ? value.level : ''
+  if (!start && !end && (!level || !crowdLevel)) return { start: '', end: '', ...(level ? { level: '' } : {}) }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start >= end) {
+    throw Object.assign(new Error(`${label} needs a valid start and end time on the same day.`), { status: 400 })
+  }
+  if (level && !MESS_CROWD_LEVELS.includes(crowdLevel)) {
+    throw Object.assign(new Error(`${label} needs a Low, Medium, or High crowd level.`), { status: 400 })
+  }
+  return { start, end, ...(level ? { level: crowdLevel } : {}) }
+}
+
+function validateMessSettings(input) {
+  if (!input || !['Open', 'Closed'].includes(input.status)) {
+    throw Object.assign(new Error('Choose whether the College Mess is Open or Closed.'), { status: 400 })
+  }
+  return {
+    status: input.status,
+    timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, validateTimeWindow(input.timings?.[meal], `${meal} timing`)])),
+    crowdSchedule: Object.fromEntries(MESS_MEALS.map((meal) => [meal, validateTimeWindow(input.crowdSchedule?.[meal], `${meal} crowd schedule`, { level: true })])),
+  }
+}
+
+function validateMessNotice(input) {
+  const title = typeof input?.title === 'string' ? input.title.trim() : ''
+  const description = typeof input?.description === 'string' ? input.description.trim() : ''
+  if (title.length < 3 || title.length > 120 || description.length < 3 || description.length > 5000) {
+    throw Object.assign(new Error('Mess notices need a title (3-120 characters) and details (3-5000 characters).'), { status: 400 })
+  }
+  return { title, description }
+}
+
+function validateMessNoticePatch(input) {
+  const patch = {}
+  if (Object.hasOwn(input || {}, 'title') || Object.hasOwn(input || {}, 'description')) Object.assign(patch, validateMessNotice(input))
+  if (Object.hasOwn(input || {}, 'active')) {
+    if (typeof input.active !== 'boolean') throw Object.assign(new Error('Notice active status must be true or false.'), { status: 400 })
+    patch.active = input.active
+  }
+  if (!Object.keys(patch).length) throw Object.assign(new Error('Include a notice edit or active-status change.'), { status: 400 })
+  return patch
+}
+
+function publicMessNotice(notice) {
+  const { id, title, description, active, createdBy, createdAt, updatedAt } = notice
+  return { id, title, description, active, createdBy, createdAt, updatedAt }
+}
+
+function notifyMessStudents(data, notice, addNotification) {
+  if (!notice.active) return
+  for (const student of data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT)) {
+    addNotification(data, { recipientUserId: student.id, title: 'College Mess notice', message: notice.title, referenceId: notice.id, target: 'food' })
+  }
 }
 
 function publicCanteenOrder(order) {

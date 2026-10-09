@@ -17,6 +17,7 @@ import StudentSports from './components/StudentSports.jsx'
 import TopBar from './components/TopBar.jsx'
 import AdministrationUsers from './components/AdministrationUsers.jsx'
 import Canteen from './components/Canteen.jsx'
+import FoodAndDineIn from './components/FoodAndDineIn.jsx'
 import NoticeBoard from './components/NoticeBoard.jsx'
 import { navigationGroups } from './data/campusData'
 
@@ -66,7 +67,7 @@ export default function SecureApp() {
 
   const showToast = useCallback((message) => setToast(message), [])
 
-  const applyRoute = useCallback((page, { replace = false, referenceId = '' } = {}) => {
+  const applyRoute = useCallback((page, { replace = false, referenceId = '', messFeedback = false } = {}) => {
     if (page === 'profile') { setModal('profile'); return }
     if (user && !canSeePage(user, page)) page = 'unauthorized'
     setRequestReference(referenceId)
@@ -78,6 +79,8 @@ export default function SecureApp() {
       ? `${pageUrl(page)}?view=requests&request=${encodeURIComponent(referenceId)}`
       : referenceId && page === 'department-requests'
         ? `${pageUrl(page)}?request=${encodeURIComponent(referenceId)}`
+        : messFeedback && page === 'complaints'
+          ? `${pageUrl(page)}?category=${encodeURIComponent('Canteen/Mess')}&new=1`
         : pageUrl(page)
     window.history[replace ? 'replaceState' : 'pushState']({}, '', url)
   }, [user])
@@ -162,7 +165,8 @@ export default function SecureApp() {
     if (mode !== 'authenticated') return undefined
     function onPopState() {
       const referenceId = new URLSearchParams(window.location.search).get('request') || ''
-      applyRoute(requestedPage(), { replace: true, referenceId })
+      const messFeedback = new URLSearchParams(window.location.search).get('category') === 'Canteen/Mess'
+      applyRoute(requestedPage(), { replace: true, referenceId, messFeedback })
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
@@ -241,14 +245,14 @@ export default function SecureApp() {
         {activePage === 'not-found' && <AccessNotice onHome={() => applyRoute('overview')} message="That campus page doesn’t exist or is no longer available."/>}
         {activePage === 'users' && user.role === APP_ROLES.ADMIN && <AdministrationUsers currentUser={user} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
         {activePage === 'campus-management' && user.role === APP_ROLES.ADMIN && <CampusManagement onNotify={showToast}/>}
-        {activePage === 'complaints' && <ComplaintCenter user={user} initialComplaintId={requestReference} onNotify={showToast}/>}
+        {activePage === 'complaints' && <ComplaintCenter user={user} initialComplaintId={requestReference} initialCategory={new URLSearchParams(window.location.search).get('category') === 'Canteen/Mess' ? 'Canteen/Mess' : ''} initialOpen={new URLSearchParams(window.location.search).get('new') === '1'} onNotify={showToast}/>}
         {activePage === 'lost-found' && <LostFoundCenter user={user} initialReportId={requestReference} onNotify={showToast}/>}
         {activePage === 'notices' && user.role !== APP_ROLES.CANTEEN && <NoticeBoard user={user} onNotify={showToast}/>}
-        {activePage === 'canteen' && <Canteen user={user} onNotify={showToast}/>}
+        {['food', 'canteen'].includes(activePage) && <FoodAndDineIn user={user} initialSection={activePage === 'canteen' ? 'canteen' : 'home'} onNavigate={(page) => applyRoute(page)} onNotify={showToast} onMessFeedback={() => applyRoute('complaints', { messFeedback: true })}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'canteen', 'sports', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'food', 'canteen', 'sports', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}

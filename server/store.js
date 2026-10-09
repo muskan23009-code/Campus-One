@@ -23,6 +23,7 @@ export function createStore(dataDirectory) {
       data.sports ??= null
       data.sportsEvents ??= []
       data.sportsRegistrations ??= []
+      data.sportsMembershipApplications ??= []
       data.sportsParticipations ??= []
       data.sportsTeams ??= []
       data.sportsSchedules ??= []
@@ -42,7 +43,7 @@ export function createStore(dataDirectory) {
       return data
     } catch (error) {
       if (error.code !== 'ENOENT') throw error
-      return { users: [], complaints: [], lostFoundReports: [], sports: null, sportsEvents: [], sportsRegistrations: [], sportsParticipations: [], sportsTeams: [], sportsSchedules: [], sportsAttendance: [], sportsResults: [], sportsAchievements: [], sportsNotices: [], foodOrders: [], canteenOrders: [], canteenMenu: null, campus: {}, registrationRequests: [], notifications: [], registrationTokens: {}, issuedUserIds: [], idCounters: {} }
+      return { users: [], complaints: [], lostFoundReports: [], sports: null, sportsEvents: [], sportsRegistrations: [], sportsMembershipApplications: [], sportsParticipations: [], sportsTeams: [], sportsSchedules: [], sportsAttendance: [], sportsResults: [], sportsAchievements: [], sportsNotices: [], foodOrders: [], canteenOrders: [], canteenMenu: null, campus: {}, registrationRequests: [], notifications: [], registrationTokens: {}, issuedUserIds: [], idCounters: {} }
     }
   }
 

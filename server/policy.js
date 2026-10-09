@@ -20,13 +20,13 @@ export const USER_ID_FORMATS = Object.freeze({
 
 export const STUDENT_MODULES = Object.freeze([
   'overview', 'copilot', 'notices', 'food', 'canteen', 'navigation', 'directory',
-  'complaints', 'sports', 'events', 'library', 'hostel', 'transport',
+  'complaints', 'sports', 'events', 'hostel',
   'lost-found', 'emergency',
 ])
 
 export const STAFF_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'events', 'library', 'hostel', 'canteen',
-  'transport', 'directory', 'food', 'lost-found', 'emergency', 'sports',
+  'overview', 'notices', 'complaints', 'events', 'hostel', 'canteen',
+  'directory', 'food', 'lost-found', 'emergency', 'sports',
 ])
 
 export const CANTEEN_STAFF_MODULES = Object.freeze(['canteen'])
@@ -152,11 +152,12 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
     diet, category, name, price, size: size || '', available: true, description: '',
   })))
 export function canAccess(user, moduleId) {
+  if (moduleId === 'library' || moduleId === 'transport') return false
   return modulesForUser(user).includes(moduleId)
 }
 
 export const MANAGEMENT_COLLECTIONS = Object.freeze([
-  'notices', 'food', 'events', 'library', 'hostel', 'transport',
+  'notices', 'food', 'events', 'hostel',
   'directory', 'emergency',
 ])
 
@@ -169,7 +170,6 @@ export const DEFAULT_CAMPUS_DATA = Object.freeze({
   notices: [
     { id: 'notice-exams', title: 'Mid-semester examination schedule', description: 'Confirm your exam center by Friday, October 9.', active: true },
     { id: 'notice-scholarship', title: 'Scholarship renewal applications', description: 'Student Affairs applications close October 14.', active: true },
-    { id: 'notice-library', title: 'Library extended hours this week', description: 'The library closes at 8:00 pm this week.', active: true },
   ],
   food: [
     { id: 'food-mess', title: 'North student mess', description: 'Lunch · 12:00–2:30 pm · Manual campus estimate', active: true, crowdLevel: 'Moderate', occupancyPercent: 68, estimatedWaitMinutes: 8, crowdUpdatedAt: '2026-10-04T09:00:00.000Z' },
@@ -179,17 +179,9 @@ export const DEFAULT_CAMPUS_DATA = Object.freeze({
     { id: 'event-design', title: 'Design week · Opening night', description: 'Thursday · 5:00 pm · Main auditorium', active: true },
     { id: 'event-openmic', title: 'Open mic at the courtyard', description: 'Friday · 6:30 pm · Student courtyard', active: true },
   ],
-  library: [
-    { id: 'library-central', title: 'Central library', description: 'Open today · Closes at 8:00 pm', active: true },
-    { id: 'library-reading-room', title: 'Engineering reading room', description: 'Academic Block A · Quiet study', active: true },
-  ],
   hostel: [
     { id: 'hostel-maintenance', title: 'Room maintenance', description: 'Track a repair request or report an issue.', active: true },
     { id: 'hostel-notices', title: 'Residence notices', description: 'Updates from your hostel community.', active: true },
-  ],
-  transport: [
-    { id: 'transport-s04', title: 'Route S-04', description: 'West campus · Library · Student residence', active: true },
-    { id: 'transport-shuttle', title: 'Campus shuttle', description: 'Gate 2 · Every 15 minutes', active: true },
   ],
   directory: [
     { id: 'directory-engineering', title: 'School of Engineering', description: 'Academic Block A · Mon–Fri, 9 am–4 pm', active: true },

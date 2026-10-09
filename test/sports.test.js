@@ -258,6 +258,85 @@ test('sports setup, event selection, team roster, scheduling, attendance, result
   assert.equal(saved.canteenOrders[0].id, 'preserve-order')
 })
 
+test('students separately apply for sports and teams; Sports Captain reviews and materializes approval', async () => {
+  const captain = users[7]
+  const sportApplicant = users[3]
+  const teamApplicant = users[2]
+  const createdTeam = await request('/api/sports/teams', { user: captain, method: 'POST', body: {
+    name: 'Cricket Practice Team', sportId: 'sport-cricket', category: 'Mixed',
+    teamType: 'Practice Team', description: 'Configured cricket practice team',
+    captainId: users[0].id, viceCaptainId: users[1].id,
+  } })
+  assert.equal(createdTeam.response.status, 201)
+  const team = createdTeam.result.team
+
+  let result = await request('/api/sports/membership-applications', { user: sportApplicant, method: 'POST', body: { sportId: 'sport-cricket' } })
+  assert.equal(result.response.status, 201)
+  const sportApplication = result.result.application
+  assert.equal(sportApplication.type, 'SPORT')
+  assert.equal(sportApplication.status, 'APPLIED')
+  assert.equal((await request('/api/sports/membership-applications', { user: sportApplicant, method: 'POST', body: { sportId: 'sport-cricket' } })).response.status, 409, 'duplicate sport applications are rejected')
+
+  result = await request('/api/sports/membership-applications', { user: teamApplicant, method: 'POST', body: { teamId: team.id } })
+  assert.equal(result.response.status, 201)
+  const teamApplication = result.result.application
+  assert.equal(teamApplication.type, 'TEAM')
+  assert.equal(teamApplication.teamId, team.id)
+  assert.equal((await request('/api/sports/membership-applications', { user: teamApplicant, method: 'POST', body: { teamId: team.id } })).response.status, 409, 'duplicate team applications are rejected')
+  assert.equal((await request('/api/sports/membership-applications', { user: users[5], method: 'POST', body: { sportId: 'sport-cricket' } })).response.status, 403, 'non-students cannot apply')
+
+  let own = await request('/api/sports/student', { user: sportApplicant })
+  assert.deepEqual(own.result.membershipApplications.map((entry) => entry.id), [sportApplication.id], 'students see only their own sports/team applications')
+  assert.ok(own.result.availableTeams.some((entry) => entry.id === team.id), 'students can see active team choices without needing prior membership')
+  assert.equal((await request('/api/sports/student', { user: users[1] })).result.membershipApplications.length, 0, 'another student cannot see the applications')
+
+  const managerData = await request('/api/sports/management', { user: captain })
+  assert.ok(managerData.result.membershipApplications.some((entry) => entry.id === sportApplication.id))
+  assert.ok(managerData.result.membershipApplications.some((entry) => entry.id === teamApplication.id))
+  assert.equal((await request(`/api/sports/membership-applications/${sportApplication.id}`, { user: sportApplicant, method: 'PATCH', body: { status: 'APPROVED' } })).response.status, 403, 'students cannot review applications')
+
+  result = await request(`/api/sports/membership-applications/${sportApplication.id}`, { user: captain, method: 'PATCH', body: { status: 'APPROVED' } })
+  assert.equal(result.response.status, 200)
+  assert.equal(result.result.application.status, 'APPROVED')
+  own = await request('/api/sports/student', { user: sportApplicant })
+  assert.equal(own.result.membershipApplications[0].status, 'APPROVED', 'students can see their application status')
+  assert.ok(own.result.mySports.some((entry) => entry.sportId === 'sport-cricket'), 'sport approval creates active participation')
+
+  result = await request(`/api/sports/membership-applications/${teamApplication.id}`, { user: captain, method: 'PATCH', body: { status: 'APPROVED' } })
+  assert.equal(result.response.status, 200)
+  const teamData = await request('/api/sports/teams', { user: captain })
+  assert.ok(teamData.result.teams.find((entry) => entry.id === team.id).members.some((entry) => entry.studentId === teamApplicant.id && entry.status === 'ACTIVE'), 'team approval adds the student to the active roster')
+
+  const rejected = await request('/api/sports/membership-applications', { user: users[1], method: 'POST', body: { sportId: 'sport-badminton' } })
+  assert.equal(rejected.response.status, 201)
+  const rejectResult = await request(`/api/sports/membership-applications/${rejected.result.application.id}`, { user: captain, method: 'PATCH', body: { status: 'REJECTED' } })
+  assert.equal(rejectResult.response.status, 200)
+  assert.equal((await request('/api/sports/student', { user: users[1] })).result.membershipApplications[0].status, 'REJECTED')
+})
+
+test('event and trial applications reject closed events and elapsed deadlines', async () => {
+  const captain = users[7]
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const base = {
+    sportId: 'sport-cricket', kind: 'TRIAL', date: '2099-05-12', time: '10:30',
+    venue: 'Sports ground', maxParticipants: 0, eligibility: 'All active students',
+    eligibleDepartments: [], description: 'Configured test trial.',
+  }
+  let result = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...base, name: 'Deadline test trial', registrationDeadline: yesterday } })
+  assert.equal(result.response.status, 201)
+  assert.equal((await request(`/api/sports/events/${result.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })).response.status, 409, 'elapsed deadline prevents registration')
+
+  result = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...base, name: 'Closed test trial', date: '2099-06-12', registrationDeadline: '2099-06-10' } })
+  assert.equal(result.response.status, 201)
+  const closed = await request(`/api/sports/events/${result.result.event.id}`, { user: captain, method: 'PATCH', body: { status: 'CLOSED' } })
+  assert.equal(closed.response.status, 200)
+  assert.equal((await request(`/api/sports/events/${result.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })).response.status, 409, 'closed events reject registration')
+
+  result = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...base, name: 'Passed test trial', date: yesterday, registrationDeadline: yesterday } })
+  assert.equal(result.response.status, 201)
+  assert.equal((await request(`/api/sports/events/${result.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })).response.status, 409, 'past events reject registration')
+})
+
 test('Administration retains sports access but cannot manage Canteen menu or orders', async () => {
   const admin = users[8]
   const getMenu = await request('/api/canteen/menu', { user: admin })
