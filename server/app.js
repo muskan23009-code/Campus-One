@@ -229,10 +229,16 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
   function assertRegistrationUnique(data, fields) {
     data.registrationRequests ??= []
-    if (data.users.some((user) => user.email === fields.email) || data.registrationRequests.some((application) => application.fields.email === fields.email)) {
+    const normalizedEmail = typeof fields.email === 'string' ? fields.email.toLowerCase() : ''
+    const normalizedRollNumber = typeof fields.rollNumber === 'string' ? fields.rollNumber.toLowerCase() : ''
+
+    if (normalizedEmail && (data.users.some((user) => (user.email || '').toLowerCase() === normalizedEmail)
+      || data.registrationRequests.some((application) => (application.fields?.email || '').toLowerCase() === normalizedEmail && application.status !== 'Rejected'))) {
       throw Object.assign(new Error('An account or application already uses this email address.'), { status: 409 })
     }
-    if (fields.rollNumber && (data.users.some((user) => user.role === ROLES.STUDENT && (user.rollNumber || '').toLowerCase() === fields.rollNumber.toLowerCase()) || data.registrationRequests.some((application) => application.role === ROLES.STUDENT && application.status !== 'Rejected' && application.fields.rollNumber.toLowerCase() === fields.rollNumber.toLowerCase()))) {
+
+    if (normalizedRollNumber && (data.users.some((user) => user.role === ROLES.STUDENT && (user.rollNumber || '').toLowerCase() === normalizedRollNumber)
+      || data.registrationRequests.some((application) => application.role === ROLES.STUDENT && application.status !== 'Rejected' && (application.fields?.rollNumber || '').toLowerCase() === normalizedRollNumber))) {
       throw Object.assign(new Error('This roll/enrollment number is already registered or awaiting review.'), { status: 409 })
     }
   }
@@ -526,7 +532,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!user) return reject(response, 401, 'Sign in to continue.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
       const data = await store.read()
-      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role) && ['Pending', 'Approved', 'Accepted', 'Rejected'].includes(application.status))
+      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role) && application.status === 'Pending')
       return json(response, 200, { requests: requests.map(publicRegistration) })
     }
 

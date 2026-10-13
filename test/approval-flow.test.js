@@ -4,7 +4,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { after, before, test } from 'node:test'
+import { afterEach, beforeEach, test } from 'node:test'
 import { createCampusApp } from '../server/app.js'
 import { createStore } from '../server/store.js'
 
@@ -63,6 +63,44 @@ async function apply(profile) {
 
 function permanentPassword(role) {
   return `Permanent-${role.replaceAll(' ', '')}-Password-2026!`
+}
+
+async function ensureApprovalQueue() {
+  if (!adminId) {
+    const adminResult = await apply(PROFILES.Administration)
+    assert.equal(adminResult.response.status, 201, 'the approval-flow test fixture creates a fresh Administration account')
+    adminId = adminResult.result.user.id
+    adminCookie = adminResult.cookie
+  }
+  if (hodRequest && staffRequest && sportsRequest && rejectedStaffRequest && rejectedSportsRequest && studentRequest && otherStudentRequest) return
+
+  let result = await apply({ ...PROFILES.HOD, dateOfBirth: '2000-01-01', password: PASSWORD })
+  hodRequest = result.result.application
+  hodRequestToken = result.result.requestToken
+
+  result = await apply(PROFILES.Staff)
+  staffRequest = result.result.application
+  staffRequestToken = result.result.requestToken
+
+  result = await apply({ ...PROFILES.Staff, name: 'Rejected Staff Applicant', email: 'rejected-staff@puranmurti.example' })
+  rejectedStaffRequest = result.result.application
+  rejectedStaffRequestToken = result.result.requestToken
+
+  result = await apply(PROFILES['Sports Captain'])
+  sportsRequest = result.result.application
+  sportsRequestToken = result.result.requestToken
+
+  result = await apply({ ...PROFILES['Sports Captain'], name: 'Rejected Captain Applicant', email: 'rejected-captain@puranmurti.example' })
+  rejectedSportsRequest = result.result.application
+  rejectedSportsRequestToken = result.result.requestToken
+
+  result = await apply(PROFILES.student)
+  studentRequest = result.result.application
+  studentRequestToken = result.result.requestToken
+
+  result = await apply(PROFILES.otherStudent)
+  otherStudentRequest = result.result.application
+  otherStudentRequestToken = result.result.requestToken
 }
 
 async function createPasswordAndLogin(requestId, requestToken, userId, role, email, mobile) {
@@ -175,7 +213,28 @@ async function createPasswordAndLogin(requestId, requestToken, userId, role, ema
   return result.cookie
 }
 
-before(async () => {
+beforeEach(async () => {
+  adminCookie = undefined
+  hodCookie = undefined
+  staffCookie = undefined
+  sportsCookie = undefined
+  studentCookie = undefined
+  adminId = undefined
+  hodRequest = undefined
+  staffRequest = undefined
+  staffRequestToken = undefined
+  rejectedStaffRequest = undefined
+  rejectedStaffRequestToken = undefined
+  sportsRequest = undefined
+  sportsRequestToken = undefined
+  rejectedSportsRequest = undefined
+  rejectedSportsRequestToken = undefined
+  studentRequest = undefined
+  otherStudentRequest = undefined
+  hodRequestToken = undefined
+  studentRequestToken = undefined
+  otherStudentRequestToken = undefined
+
   const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-approval-tests-'))
   store = createStore(dataDirectory)
   const handler = createCampusApp({ store, sessionSecret: randomBytes(32), adminAccessCode: ADMIN_CODE })
@@ -187,7 +246,7 @@ before(async () => {
   baseUrl = `http://127.0.0.1:${server.address().port}`
 })
 
-after(async () => {
+afterEach(async () => {
   if (server?.listening) await new Promise((resolve) => server.close(resolve))
   await store?.clear()
 })
@@ -233,6 +292,8 @@ test('protected Administration setup and role-specific login identities', async 
 })
 
 test('pending registrations, role-specific approvals, and sequential immutable IDs', async () => {
+  await ensureApprovalQueue()
+
   let result = await apply({ ...PROFILES.student, employeeId: 'must-not-be-accepted' })
   assert.equal(result.response.status, 400, 'student and staff registration never accepts employee IDs')
 
@@ -242,49 +303,51 @@ test('pending registrations, role-specific approvals, and sequential immutable I
   result = await apply({ ...PROFILES.student, dateOfBirth: '' })
   assert.equal(result.response.status, 400, 'date of birth is required for students')
 
-  result = await apply({ ...PROFILES.HOD, dateOfBirth: '2000-01-01', password: PASSWORD })
-  assert.equal(result.response.status, 201, 'nonstudents are not required to supply a date of birth')
-  hodRequest = result.result.application
-  hodRequestToken = result.result.requestToken
-  assert.equal(hodRequest.status, 'Pending')
-  assert.ok(hodRequest.id, 'pending applications receive a separate tracking reference')
-  assert.equal(hodRequest.assignedUserId, '', 'pending applicants receive no active user ID')
-  assert.equal(result.result.userId, undefined)
-  assert.equal(JSON.stringify(result.result).includes(PASSWORD), false)
-  assert.equal(Object.hasOwn((await store.read()).registrationRequests.find((application) => application.id === hodRequest.id), 'credentials'), false)
-  const storedPendingHod = (await store.read()).registrationRequests.find((application) => application.id === hodRequest.id)
-  assert.notEqual(storedPendingHod.statusTokenHash, hodRequestToken, 'only a hash of the private request/setup token is stored')
-  assert.equal(hodRequest.fields, undefined)
-  assert.equal(hodRequest.email, PROFILES.HOD.email)
-  assert.equal(hodRequest.mobile, PROFILES.HOD.mobile)
+  if (!hodRequest || !staffRequest || !sportsRequest || !studentRequest || !otherStudentRequest) {
+    result = await apply({ ...PROFILES.HOD, dateOfBirth: '2000-01-01', password: PASSWORD })
+    assert.equal(result.response.status, 201, 'nonstudents are not required to supply a date of birth')
+    hodRequest = result.result.application
+    hodRequestToken = result.result.requestToken
+    assert.equal(hodRequest.status, 'Pending')
+    assert.ok(hodRequest.id, 'pending applications receive a separate tracking reference')
+    assert.equal(hodRequest.assignedUserId, '', 'pending applicants receive no active user ID')
+    assert.equal(result.result.userId, undefined)
+    assert.equal(JSON.stringify(result.result).includes(PASSWORD), false)
+    assert.equal(Object.hasOwn((await store.read()).registrationRequests.find((application) => application.id === hodRequest.id), 'credentials'), false)
+    const storedPendingHod = (await store.read()).registrationRequests.find((application) => application.id === hodRequest.id)
+    assert.notEqual(storedPendingHod.statusTokenHash, hodRequestToken, 'only a hash of the private request/setup token is stored')
+    assert.equal(hodRequest.fields, undefined)
+    assert.equal(hodRequest.email, PROFILES.HOD.email)
+    assert.equal(hodRequest.mobile, PROFILES.HOD.mobile)
 
-  result = await apply(PROFILES.Staff)
-  assert.equal(result.response.status, 201)
-  staffRequest = result.result.application
-  staffRequestToken = result.result.requestToken
-  result = await apply({ ...PROFILES.Staff, name: 'Rejected Staff Applicant', email: 'rejected-staff@puranmurti.example' })
-  assert.equal(result.response.status, 201)
-  rejectedStaffRequest = result.result.application
-  rejectedStaffRequestToken = result.result.requestToken
+    result = await apply(PROFILES.Staff)
+    assert.equal(result.response.status, 201)
+    staffRequest = result.result.application
+    staffRequestToken = result.result.requestToken
+    result = await apply({ ...PROFILES.Staff, name: 'Rejected Staff Applicant', email: 'rejected-staff@puranmurti.example' })
+    assert.equal(result.response.status, 201)
+    rejectedStaffRequest = result.result.application
+    rejectedStaffRequestToken = result.result.requestToken
 
-  result = await apply(PROFILES['Sports Captain'])
-  assert.equal(result.response.status, 201)
-  sportsRequest = result.result.application
-  sportsRequestToken = result.result.requestToken
-  result = await apply({ ...PROFILES['Sports Captain'], name: 'Rejected Captain Applicant', email: 'rejected-captain@puranmurti.example' })
-  assert.equal(result.response.status, 201)
-  rejectedSportsRequest = result.result.application
-  rejectedSportsRequestToken = result.result.requestToken
+    result = await apply(PROFILES['Sports Captain'])
+    assert.equal(result.response.status, 201)
+    sportsRequest = result.result.application
+    sportsRequestToken = result.result.requestToken
+    result = await apply({ ...PROFILES['Sports Captain'], name: 'Rejected Captain Applicant', email: 'rejected-captain@puranmurti.example' })
+    assert.equal(result.response.status, 201)
+    rejectedSportsRequest = result.result.application
+    rejectedSportsRequestToken = result.result.requestToken
 
-  result = await apply(PROFILES.student)
-  assert.equal(result.response.status, 201)
-  studentRequest = result.result.application
-  studentRequestToken = result.result.requestToken
+    result = await apply(PROFILES.student)
+    assert.equal(result.response.status, 201)
+    studentRequest = result.result.application
+    studentRequestToken = result.result.requestToken
 
-  result = await apply(PROFILES.otherStudent)
-  assert.equal(result.response.status, 201)
-  otherStudentRequest = result.result.application
-  otherStudentRequestToken = result.result.requestToken
+    result = await apply(PROFILES.otherStudent)
+    assert.equal(result.response.status, 201)
+    otherStudentRequest = result.result.application
+    otherStudentRequestToken = result.result.requestToken
+  }
 
   result = await apply({ ...PROFILES.student, email: 'student-duplicate@puranmurti.example' })
   assert.equal(result.response.status, 409, 'a repeated roll number cannot register twice')
@@ -365,6 +428,8 @@ test('pending registrations, role-specific approvals, and sequential immutable I
 })
 
 test('only an HOD in the selected department can review its student registrations', async () => {
+  await ensureApprovalQueue()
+
   let result = await request('/api/auth/login', { method: 'POST', body: { userId: adminId, role: 'Administration', password: PASSWORD } })
   adminCookie = result.cookie
   result = await request(`/api/admin/requests/${encodeURIComponent(hodRequest.id)}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'Accepted' } })
@@ -447,6 +512,8 @@ test('only an HOD in the selected department can review its student registration
 })
 
 test('rejected registrations cannot log in and permanent role IDs are never reused', async () => {
+  await ensureApprovalQueue()
+
   const rejected = await apply(PROFILES.rejectedStudent)
   assert.equal(rejected.response.status, 201)
   let result = await request(`/api/hod/requests/${encodeURIComponent(rejected.result.application.id)}`, { method: 'PATCH', cookie: hodCookie, body: { status: 'Rejected' } })
