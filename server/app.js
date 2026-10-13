@@ -9,7 +9,7 @@ import {
 import {
   CANTEEN_CATEGORIES, CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_SPORTS_DATA, DEPARTMENTS,
   INITIAL_CANTEEN_MENU,
-  MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, STAFF_MODULES,
+  MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, SPORTS_DEPARTMENTS, STAFF_MODULES,
   STUDENT_MODULES, USER_ID_FORMATS, canAccess, modulesForUser,
 } from './policy.js'
 
@@ -231,14 +231,15 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     data.registrationRequests ??= []
     const normalizedEmail = typeof fields.email === 'string' ? fields.email.toLowerCase() : ''
     const normalizedRollNumber = typeof fields.rollNumber === 'string' ? fields.rollNumber.toLowerCase() : ''
+    const activeUsers = data.users.filter((user) => user.active !== false)
+    const pendingApplications = data.registrationRequests.filter((application) => application.status === 'Pending')
 
-    if (normalizedEmail && (data.users.some((user) => (user.email || '').toLowerCase() === normalizedEmail)
-      || data.registrationRequests.some((application) => (application.fields?.email || '').toLowerCase() === normalizedEmail && application.status !== 'Rejected'))) {
+    if (normalizedEmail && (activeUsers.some((user) => (user.email || '').toLowerCase() === normalizedEmail)
+      || pendingApplications.some((application) => (application.fields?.email || '').toLowerCase() === normalizedEmail))) {
       throw Object.assign(new Error('An account or application already uses this email address.'), { status: 409 })
     }
 
-    if (normalizedRollNumber && (data.users.some((user) => user.role === ROLES.STUDENT && (user.rollNumber || '').toLowerCase() === normalizedRollNumber)
-      || data.registrationRequests.some((application) => application.role === ROLES.STUDENT && application.status !== 'Rejected' && (application.fields?.rollNumber || '').toLowerCase() === normalizedRollNumber))) {
+    if (normalizedRollNumber && pendingApplications.some((application) => application.role === ROLES.STUDENT && (application.fields?.rollNumber || '').toLowerCase() === normalizedRollNumber)) {
       throw Object.assign(new Error('This roll/enrollment number is already registered or awaiting review.'), { status: 409 })
     }
   }
@@ -532,7 +533,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!user) return reject(response, 401, 'Sign in to continue.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
       const data = await store.read()
-      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role) && application.status === 'Pending')
+      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role))
       return json(response, 200, { requests: requests.map(publicRegistration) })
     }
 
@@ -635,7 +636,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         deliverDueNoticeNotifications(current)
         return current
       })
-      const notifications = (data.notifications || []).filter((notification) => notification.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || notification.target === 'canteen')).slice(0, 100)
+      const notifications = (data.notifications || [])
+        .filter((notification) => notification.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || notification.target === 'canteen'))
+        .slice(0, 100)
       return json(response, 200, { notifications: notifications.map(publicNotification), unreadCount: notifications.filter((notification) => !notification.readAt).length })
     }
 
@@ -1514,7 +1517,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const noticeIds = new Set(data.sportsNotices.filter((notice) => notice.recipientIds?.includes(user.id)).map((notice) => notice.id))
       return json(response, 200, {
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
-        events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED'),
+        events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED').map(publicSportsEvent),
         registrations: ownRegistrations,
         membershipApplications: ownMembershipApplications,
         availableTeams: activeTeams.map(({ id, name, sportId, sportName, category, teamType, description }) => ({ id, name, sportId, sportName, category, teamType, description })),
@@ -1644,7 +1647,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       ]
       return json(response, 200, {
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
-        events: data.sportsEvents,
+        events: data.sportsEvents.map(publicSportsEvent),
         registrations: data.sportsRegistrations.map((entry) => publicSportsRegistration(entry, data)),
         membershipApplications: data.sportsMembershipApplications || [],
         teams: data.sportsTeams.map((team) => publicSportsTeam(team, data.users)),
@@ -1708,7 +1711,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (pathname === '/api/sports/events' && request.method === 'GET') {
       if (!studentSportsRole) return reject(response, 403, 'Student Sports access is not assigned to your role.')
       const data = await store.read()
-      return json(response, 200, { events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED') })
+      return json(response, 200, { events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED').map(publicSportsEvent) })
     }
 
     if (pathname === '/api/sports/events' && request.method === 'POST') {
@@ -1721,7 +1724,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         data.sportsEvents.unshift(event)
         return event
       })
-      return json(response, 201, { event: created })
+      return json(response, 201, { event: publicSportsEvent(created) })
     }
 
     const sportsEventRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)$/)
@@ -1731,11 +1734,14 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const updated = await store.transact((data) => {
         const event = data.sportsEvents.find((entry) => entry.id === eventId)
         if (!event) throw Object.assign(new Error('Sports event or trial not found.'), { status: 404 })
-        const patch = validateSportsEvent({ ...event, ...input }, data, { partial: true })
+        const patch = validateSportsEvent({ ...event, ...input }, data, {
+          partial: true,
+          allowLegacyDepartments: input.eligibleDepartments === undefined,
+        })
         Object.assign(event, patch, { updatedAt: new Date().toISOString() })
         return event
       })
-      return json(response, 200, { event: updated })
+      return json(response, 200, { event: publicSportsEvent(updated) })
     }
 
     const sportsRegistrationRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)\/register$/)
@@ -1744,11 +1750,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const registration = await store.transact((data) => {
         const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsRegistrationRoute[1]))
         if (!event || event.status !== 'OPEN') throw Object.assign(new Error('This event or trial is not open for registration.'), { status: 409 })
+        if (event.registrationRequired === false) throw Object.assign(new Error('This event or trial does not require registration.'), { status: 409 })
         if (!sportFor(data, event.sportId)) throw Object.assign(new Error('This event’s sport is no longer active.'), { status: 409 })
         if (!validEventEligibility(event, user)) throw Object.assign(new Error('You are not eligible to register for this event.'), { status: 403 })
-        const now = new Date()
-        if (Date.parse(`${event.registrationDeadline}T23:59:59`) < now.getTime()) throw Object.assign(new Error('The registration deadline has passed.'), { status: 409 })
-        if (event.date < now.toISOString().slice(0, 10)) throw Object.assign(new Error('This event or trial has already taken place.'), { status: 409 })
+        const today = new Date().toISOString().slice(0, 10)
+        if (event.registrationDeadline < today) throw Object.assign(new Error('The registration deadline has passed.'), { status: 409 })
+        if (event.date < today) throw Object.assign(new Error('This event or trial has already taken place.'), { status: 409 })
         if (data.sportsRegistrations.some((entry) => entry.eventId === event.id && entry.studentId === user.id && !['REJECTED', 'CANCELLED'].includes(entry.status))) throw Object.assign(new Error('You already have an application for this event.'), { status: 409 })
         if (event.maxParticipants && data.sportsRegistrations.filter((entry) => entry.eventId === event.id && !['REJECTED', 'CANCELLED'].includes(entry.status)).length >= event.maxParticipants) throw Object.assign(new Error('This event has reached its participant limit.'), { status: 409 })
         const created = { id: randomUUID(), eventId: event.id, eventName: event.name, sportId: event.sportId, sportName: event.sportName, studentId: user.id, studentName: user.name, department: user.department || '', semester: user.semester || '', mobile: user.mobile || '', status: 'APPLIED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
@@ -2592,6 +2599,7 @@ function initializeCampusNotices(data) {
 function deliverDueNoticeNotifications(data) {
   const now = Date.now()
   for (const notice of campusNotices(data)) {
+    if (!notice.createdBy) continue
     if (Date.parse(notice.publishAt || notice.createdAt) > now || notice.expiresAt && Date.parse(notice.expiresAt) < now) continue
     for (const recipientUserId of notice.recipientIds || []) {
       const recipient = data.users.find((candidate) => candidate.id === recipientUserId && candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
@@ -2857,16 +2865,39 @@ function sportFor(data, value) {
   return records.find((entry) => entry.active !== false && ['Sport', 'Team'].includes(entry.kind) && (entry.id === key || entry.title.toLowerCase() === key.toLowerCase()))
 }
 
-function validEventEligibility(event, user) {
-  const departments = event.eligibleDepartments || []
-  return !departments.length || departments.includes(user.department)
+function normalizeSportsDepartment(value) {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim().toLowerCase()
+  return SPORTS_DEPARTMENTS.find((department) => department.toLowerCase() === normalized) || ''
 }
 
-function validateSportsEvent(input, data, { partial = false } = {}) {
+function sportsDepartmentFor(user) {
+  const department = normalizeSportsDepartment(user.department)
+  if (department) return department
+  const course = typeof user.course === 'string' ? user.course.trim().toLowerCase().replace(/[^a-z]/g, '') : ''
+  return course === 'btech' ? 'BTech' : normalizeSportsDepartment(user.course)
+}
+
+function validEventEligibility(event, user) {
+  const departments = event.eligibleDepartments || []
+  return !departments.length || departments.some((department) => {
+    const normalized = normalizeSportsDepartment(department)
+    return normalized
+      ? normalized === sportsDepartmentFor(user)
+      : typeof user.department === 'string' && department.trim().toLowerCase() === user.department.trim().toLowerCase()
+  })
+}
+
+function publicSportsEvent(event) {
+  return { ...event, registrationRequired: event.registrationRequired !== false }
+}
+
+function validateSportsEvent(input, data, { partial = false, allowLegacyDepartments = false } = {}) {
   const name = safeText(input.name, 120)
   const sport = sportFor(data, input.sportId || input.sportName)
   const date = safeText(input.date, 10)
-  const time = safeText(input.time, 5)
+  const rawTime = safeText(input.time, 8)
+  const time = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(rawTime) ? rawTime.slice(0, 5) : rawTime
   const registrationDeadline = safeText(input.registrationDeadline, 10)
   const venue = safeText(input.venue, 160)
   const eligibility = safeText(input.eligibility, 300)
@@ -2874,13 +2905,21 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
   const status = safeText(input.status || 'OPEN', 20).toUpperCase()
   const maxParticipants = input.maxParticipants === '' || input.maxParticipants === undefined ? 0 : Number(input.maxParticipants)
   const kind = safeText(input.kind || 'EVENT', 20).toUpperCase()
-  const eligibleDepartments = Array.isArray(input.eligibleDepartments) ? [...new Set(input.eligibleDepartments.map((value) => safeText(value, 100)).filter(Boolean))] : []
-  if (eligibleDepartments.some((department) => !DEPARTMENTS.includes(department))) throw sportsError('Choose valid campus departments for event eligibility.')
+  const registrationRequired = input.registrationRequired === undefined ? true : input.registrationRequired
+  const departmentValues = Array.isArray(input.eligibleDepartments) ? input.eligibleDepartments : []
+  const eligibleDepartments = [...new Set(departmentValues.map((value) => {
+    const normalized = normalizeSportsDepartment(value)
+    const legacy = allowLegacyDepartments && typeof value === 'string' && DEPARTMENTS.find((department) => department.toLowerCase() === value.trim().toLowerCase())
+    if (!normalized && !legacy) throw sportsError('Choose one of the valid Sports departments: BTech, BCA, Law, Pharmacy, Diploma, or Management.')
+    return normalized || legacy
+  }))]
+  if (input.eligibleDepartments !== undefined && !Array.isArray(input.eligibleDepartments)) throw sportsError('Choose valid Sports departments for event eligibility.')
+  if (typeof registrationRequired !== 'boolean') throw sportsError('Choose whether event registration is required.')
   if ((!partial || input.name !== undefined) && name.length < 2) throw sportsError('Enter an event or trial name.')
   if (!sport && (!partial || input.sportId !== undefined || input.sportName !== undefined)) throw sportsError('Choose an active sport.')
   if ((!partial || input.date !== undefined) && !validCalendarDate(date)) throw sportsError('Choose a valid event date.')
-  if ((!partial || input.time !== undefined) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw sportsError('Choose a valid event time.')
-  if ((!partial || input.registrationDeadline !== undefined) && !validCalendarDate(registrationDeadline)) throw sportsError('Choose a valid registration deadline.')
+  if ((!partial || input.time !== undefined) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw sportsError('Choose a valid event time using the time picker.')
+  if ((registrationRequired && (!partial || input.registrationDeadline !== undefined) || registrationDeadline) && !validCalendarDate(registrationDeadline)) throw sportsError('Choose a valid registration deadline.')
   if (date && registrationDeadline && registrationDeadline > date) throw sportsError('Registration deadline cannot be after the event date.')
   if ((!partial || input.venue !== undefined) && !venue) throw sportsError('Enter an event venue.')
   if ((!partial || input.description !== undefined) && description.length < 3) throw sportsError('Add an event description.')
@@ -2892,7 +2931,7 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
     ...(partial && input.sportId === undefined && input.sportName === undefined ? {} : { sportId: sport.id, sportName: sport.title }),
     ...(partial && input.date === undefined ? {} : { date }),
     ...(partial && input.time === undefined ? {} : { time }),
-    ...(partial && input.registrationDeadline === undefined ? {} : { registrationDeadline }),
+    ...(partial && input.registrationDeadline === undefined ? {} : { registrationDeadline: registrationDeadline || '' }),
     ...(partial && input.venue === undefined ? {} : { venue }),
     ...(partial && input.maxParticipants === undefined ? {} : { maxParticipants }),
     ...(partial && input.eligibility === undefined ? {} : { eligibility }),
@@ -2900,6 +2939,7 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
     ...(partial && input.description === undefined ? {} : { description }),
     ...(partial && input.kind === undefined ? {} : { kind }),
     ...(partial && input.status === undefined ? {} : { status }),
+    registrationRequired,
   }
 }
 
@@ -3047,7 +3087,9 @@ function validCalendarDate(value) {
 }
 
 function sportsNoticeRecipients(notice, data) {
-  if (notice.audienceType === 'ALL') return [...new Set(data.users.filter((candidate) => candidate.active && [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(candidate.role)).map((candidate) => candidate.id))]
+  if (notice.audienceType === 'ALL') return activeSportsUsers(data)
+    .filter((candidate) => activeSportsParticipations(data, candidate.id).length > 0)
+    .map((candidate) => candidate.id)
   if (notice.audienceType === 'TEAM') {
     const team = data.sportsTeams.find((entry) => entry.id === notice.audienceId)
     if (!team) throw sportsError('Choose an existing team for this notice.')

@@ -66,9 +66,14 @@ export default function StudentSports({ user, onNotify }) {
   if (!data) return <div className="management-state"><span className="loading-spinner"/>Loading Sports…</div>
   const appliedEvents = new Set(data.registrations.filter((entry) => !['REJECTED', 'CANCELLED'].includes(entry.status)).map((entry) => entry.eventId))
   const membershipApplications = data.membershipApplications || []
-  const appliedMembershipTargets = new Set(membershipApplications.filter((entry) => !['REJECTED', 'CANCELLED'].includes(entry.status)).map((entry) => entry.teamId || `sport:${entry.sportId}`))
+  const appliedMembershipTargets = new Set([
+    ...membershipApplications.filter((entry) => !['REJECTED', 'CANCELLED'].includes(entry.status)).map((entry) => entry.teamId || `sport:${entry.sportId}`),
+    ...data.mySports.map((sport) => `sport:${sport.sportId}`),
+    ...(data.teams || []).map((team) => team.id),
+  ])
   const canApplyForMembership = ['Student', 'Sports Captain'].includes(user.role)
-  const futureEvents = data.events.filter((event) => new Date(`${event.date}T${event.time || '23:59'}`) >= new Date() && event.status === 'OPEN')
+  const today = new Date().toISOString().slice(0, 10)
+  const futureEvents = data.events.filter((event) => event.date >= today && event.status === 'OPEN')
   const selectedSport = data.mySports.find((sport) => sport.sportId === selectedSportId)
   const selectedSportTeams = data.teams.filter((team) => team.sportId === selectedSportId)
   const selectedSportSchedules = data.schedules.filter((entry) => entry.sportId === selectedSportId)
@@ -90,17 +95,15 @@ export default function StudentSports({ user, onNotify }) {
           <article><Medal/><span><b>{data.mySports.length}</b>My sports</span></article>
         </div>
         <h2>Available sports</h2>
-        <div className="sports-card-grid">{data.sports.filter((sport) => sport.active !== false && ['Sport', 'Team'].includes(sport.kind)).map((sport) => {
-          const application = membershipApplications.find((entry) => entry.sportId === sport.id && !entry.teamId)
-          const target = `sport:${sport.id}`
-          return <article className="sports-team-card" key={sport.id}><span className="section-eyebrow">SPORT · ACTIVE</span><h3>{sport.title}</h3><p>{sport.description}</p>{sport.rules && <small>Rules: {sport.rules}</small>}{application && <strong className="sports-status">Application · {application.status}</strong>}{canApplyForMembership && <button className="module-primary" disabled={appliedMembershipTargets.has(target) || busy === sport.id} onClick={() => applyForMembership(sport, 'sport')}><UserRoundPlus size={14}/>{appliedMembershipTargets.has(target) ? `Application ${application?.status || 'submitted'}` : busy === sport.id ? 'Applying…' : 'Apply Now'}</button>}</article>
-        })}</div>
-        <h2>Available teams</h2>
-        {!data.availableTeams?.length && <p className="sports-empty">No active teams are currently accepting applications.</p>}
-        <div className="sports-card-grid">{(data.availableTeams || []).map((team) => {
-          const application = membershipApplications.find((entry) => entry.teamId === team.id)
-          return <article className="sports-team-card" key={team.id}><span className="section-eyebrow">{team.sportName} · {team.category} · {team.teamType}</span><h3>{team.name}</h3><p>{team.description}</p>{application && <strong className="sports-status">Application · {application.status}</strong>}{canApplyForMembership && <button className="module-primary" disabled={appliedMembershipTargets.has(team.id) || busy === team.id} onClick={() => applyForMembership(team, 'team')}><UserRoundPlus size={14}/>{appliedMembershipTargets.has(team.id) ? `Application ${application?.status || 'submitted'}` : busy === team.id ? 'Applying…' : 'Join Team'}</button>}</article>
-        })}</div>
+        <SportsMembershipCatalog
+          sports={data.sports.filter((sport) => sport.active !== false && ['Sport', 'Team'].includes(sport.kind))}
+          teams={data.availableTeams || []}
+          applications={membershipApplications}
+          appliedTargets={appliedMembershipTargets}
+          canApply={canApplyForMembership}
+          busy={busy}
+          onApply={applyForMembership}
+        />
         <h2>Upcoming events & trials</h2>
         <EventList events={futureEvents.slice(0, 4)} appliedEvents={appliedEvents} busy={busy} onRegister={register} registrations={data.registrations} user={user}/>
         <h2>Sports notices</h2>
@@ -108,7 +111,7 @@ export default function StudentSports({ user, onNotify }) {
       </>}
       {section === 'Events & Trials' && <>
         <h2>Events & trials</h2>
-        <EventList events={data.events.filter((event) => !['CANCELLED', 'COMPLETED'].includes(event.status) && new Date(`${event.date}T${event.time || '23:59'}`) >= new Date())} appliedEvents={appliedEvents} busy={busy} onRegister={register} registrations={data.registrations} user={user}/>
+        <EventList events={data.events.filter((event) => !['CANCELLED', 'COMPLETED'].includes(event.status) && event.date >= today)} appliedEvents={appliedEvents} busy={busy} onRegister={register} registrations={data.registrations} user={user}/>
       </>}
       {section === 'My Applications' && <>
         <h2>My applications</h2>
@@ -142,17 +145,53 @@ export default function StudentSports({ user, onNotify }) {
   </div>
 }
 
-function EventList({ events, appliedEvents, busy, onRegister, registrations = [], user }) {
+export function SportsMembershipCatalog({ sports, teams, applications, appliedTargets, canApply, busy, onApply }) {
+  return <>
+    <div className="sports-card-grid">{sports.map((sport) => {
+      const application = applications.find((entry) => entry.sportId === sport.id && !entry.teamId)
+      const target = `sport:${sport.id}`
+      return <article className="sports-team-card" key={sport.id}><span className="section-eyebrow">SPORT · ACTIVE</span><h3>{sport.title}</h3><p>{sport.description}</p>{sport.rules && <small>Rules: {sport.rules}</small>}{application && <strong className="sports-status">Application · {application.status}</strong>}{canApply && <button className="module-primary" disabled={appliedTargets.has(target) || busy === sport.id} onClick={() => onApply(sport, 'sport')}><UserRoundPlus size={14}/>{appliedTargets.has(target) ? application?.status === 'APPROVED' ? 'Joined' : `Application ${application?.status || 'submitted'}` : busy === sport.id ? 'Applying…' : 'Apply to Join'}</button>}</article>
+    })}</div>
+    <h2>Available teams</h2>
+    {!teams.length && <p className="sports-empty">No active teams are currently accepting applications.</p>}
+    <div className="sports-card-grid">{teams.map((team) => {
+      const application = applications.find((entry) => entry.teamId === team.id)
+      return <article className="sports-team-card" key={team.id}><span className="section-eyebrow">{team.sportName} · {team.category} · {team.teamType}</span><h3>{team.name}</h3><p>{team.description}</p>{application && <strong className="sports-status">Application · {application.status}</strong>}{canApply && <button className="module-primary" disabled={appliedTargets.has(team.id) || busy === team.id} onClick={() => onApply(team, 'team')}><UserRoundPlus size={14}/>{appliedTargets.has(team.id) ? application?.status === 'APPROVED' ? 'Joined' : `Application ${application?.status || 'submitted'}` : busy === team.id ? 'Applying…' : 'Apply to Join'}</button>}</article>
+    })}</div>
+  </>
+}
+
+export function EventList({ events, appliedEvents, busy, onRegister, registrations = [], user }) {
   if (!events.length) return <p className="sports-empty">No events or trials to show right now.</p>
   return <div className="sports-card-grid">{events.map((event) => {
     const application = registrations.find((entry) => entry.eventId === event.id)
     const today = new Date().toISOString().slice(0, 10)
-    const deadlinePassed = event.registrationDeadline < today
+    const registrationRequired = event.registrationRequired !== false
+    const deadlinePassed = Boolean(event.registrationDeadline) && event.registrationDeadline < today
     const eventPassed = event.date < today
-    const eligible = !event.eligibleDepartments?.length || event.eligibleDepartments.includes(user.department)
-    const canApply = ['Student', 'Staff', 'HOD', 'Sports Captain'].includes(user.role) && event.status === 'OPEN' && !deadlinePassed && !eventPassed && eligible
-    return <article className="sports-event-card" key={event.id}><span className="section-eyebrow">{event.kind} · {event.sportName}</span><h3>{event.name}</h3><p>{event.description}</p><div className="sports-event-meta"><span><CalendarDays size={14}/>{event.date}{event.time ? ` · ${event.time}` : ''}</span>{event.venue && <span>{event.venue}</span>}{event.registrationDeadline && <span>Register by {event.registrationDeadline}</span>}<span>{event.eligibleDepartments?.length ? `Eligible: ${event.eligibleDepartments.join(', ')}` : event.eligibility || 'Open eligibility'}</span>{event.maxParticipants > 0 && <span>Maximum participants: {event.maxParticipants}</span>}</div>{application && <strong className="sports-status">Application · {application.status}</strong>}{canApply && <button className="module-primary" disabled={appliedEvents.has(event.id) || busy === event.id} onClick={() => onRegister(event)}>{appliedEvents.has(event.id) ? `Application ${application?.status || 'submitted'}` : busy === event.id ? 'Applying…' : 'Apply Now'}</button>}{event.status === 'OPEN' && !eligible && <span className="sports-status">Not eligible for your department</span>}</article>
+    const eligible = !event.eligibleDepartments?.length || event.eligibleDepartments.some((department) => {
+      const normalized = normalizeSportsDepartment(department)
+      return normalized
+        ? normalized === sportsDepartmentFor(user)
+        : department.trim().toLowerCase() === (user.department || '').trim().toLowerCase()
+    })
+    const canApply = registrationRequired && ['Student', 'Staff', 'HOD', 'Sports Captain'].includes(user.role) && event.status === 'OPEN' && !deadlinePassed && !eventPassed && eligible
+    const applicationClosed = event.status !== 'OPEN' || deadlinePassed || eventPassed
+    return <article className="sports-event-card" key={event.id}><span className="section-eyebrow">{event.kind} · {event.sportName}</span><h3>{event.name}</h3><p>{event.description}</p><div className="sports-event-meta"><span><CalendarDays size={14}/>{event.date}{event.time ? ` · ${event.time}` : ''}</span>{event.venue && <span>{event.venue}</span>}{registrationRequired && event.registrationDeadline && <span>Register by {event.registrationDeadline}</span>}<span>{event.eligibleDepartments?.length ? `Eligible: ${event.eligibleDepartments.join(', ')}` : event.eligibility || 'Open eligibility'}</span>{event.maxParticipants > 0 && <span>Maximum participants: {event.maxParticipants}</span>}</div>{application && <strong className="sports-status">Application · {application.status}</strong>}{canApply && <button className="module-primary" disabled={appliedEvents.has(event.id) || busy === event.id} onClick={() => onRegister(event)}>{appliedEvents.has(event.id) ? `Application ${application?.status || 'submitted'}` : busy === event.id ? 'Applying…' : 'Apply Now'}</button>}{!registrationRequired && <span className="sports-status">Registration not required</span>}{registrationRequired && applicationClosed && <span className="sports-status">Applications closed</span>}{registrationRequired && !applicationClosed && !eligible && <span className="sports-status">Not eligible for your department</span>}</article>
   })}</div>
+}
+
+function normalizeSportsDepartment(value) {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim().toLowerCase()
+  return ['BTech', 'BCA', 'Law', 'Pharmacy', 'Diploma', 'Management'].find((department) => department.toLowerCase() === normalized) || ''
+}
+
+function sportsDepartmentFor(user) {
+  const department = normalizeSportsDepartment(user.department)
+  if (department) return department
+  const course = typeof user.course === 'string' ? user.course.trim().toLowerCase().replace(/[^a-z]/g, '') : ''
+  return course === 'btech' ? 'BTech' : normalizeSportsDepartment(user.course)
 }
 
 function TeamList({ teams }) {

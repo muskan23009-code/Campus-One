@@ -166,6 +166,10 @@ export const DEPARTMENTS = Object.freeze([
   'Electrical Engineering', 'Business Administration', 'Pharmacy',
 ])
 
+export const SPORTS_DEPARTMENTS = Object.freeze([
+  'BTech', 'BCA', 'Law', 'Pharmacy', 'Diploma', 'Management',
+])
+
 export const DEFAULT_CAMPUS_DATA = Object.freeze({
   notices: [
     { id: 'notice-exams', title: 'Mid-semester examination schedule', description: 'Confirm your exam center by Friday, October 9.', active: true },

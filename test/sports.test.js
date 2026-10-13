@@ -29,7 +29,7 @@ const users = [
   ['PM-CS001', 'Canteen Staff', true, 'Canteen Example'],
 ].map(([id, role, active, name]) => ({
   id, role, active, name, email: `${id.toLowerCase()}@example.test`, mobile: '9876543210',
-  department: id === 'PM-S1004' ? 'Civil Engineering' : 'Computer Science', semester: 'Semester 4', course: 'B.Tech',
+  department: id === 'PM-S1004' ? 'Civil Engineering' : 'Computer Science', semester: 'Semester 4', course: id === 'PM-S1004' ? 'BCA' : 'B.Tech',
   sessionVersion: 1, mustChangePassword: false,
 }))
 
@@ -120,7 +120,7 @@ test('sports setup, event selection, team roster, scheduling, attendance, result
   const eventBody = {
     name: 'Tennis trials', sportId: tennis.id, kind: 'TRIAL', date: '2099-05-12', time: '10:30',
     venue: 'Sports ground', registrationDeadline: '2099-05-10', maxParticipants: 12,
-    eligibility: 'All active students', eligibleDepartments: ['Computer Science'], description: 'Try out for the college team.',
+    eligibility: 'All active students', eligibleDepartments: ['BTech'], description: 'Try out for the college team.',
   }
   result = await request('/api/sports/events', { user: captain, method: 'POST', body: eventBody })
   assert.equal(result.response.status, 201)
@@ -314,6 +314,49 @@ test('students separately apply for sports and teams; Sports Captain reviews and
   assert.equal((await request('/api/sports/student', { user: users[1] })).result.membershipApplications[0].status, 'REJECTED')
 })
 
+test('general Sports notices target participants while campus announcements remain in Notices', async () => {
+  const captain = users[7]
+  const sportsNotice = await request('/api/sports/notices', { user: captain, method: 'POST', body: {
+    title: 'All sports participants update', message: 'A general update for active sports participants.', audienceType: 'ALL',
+  } })
+  assert.equal(sportsNotice.response.status, 201, sportsNotice.result.error)
+  const saved = await store.read()
+  const persistedSportsNotice = saved.sportsNotices.find((notice) => notice.id === sportsNotice.result.notice.id)
+  assert.ok(persistedSportsNotice.recipientIds.length > 0)
+  for (const user of [users[5], users[6]]) {
+    assert.ok(!persistedSportsNotice.recipientIds.includes(user.id), `${user.role} is not included without sports participation`)
+    const inbox = await request('/api/notifications', { user })
+    assert.ok(!inbox.result.notifications.some((entry) => entry.referenceId === persistedSportsNotice.id))
+  }
+  for (const recipientId of persistedSportsNotice.recipientIds) {
+    assert.equal(saved.notifications.filter((entry) => entry.referenceId === persistedSportsNotice.id && entry.recipientUserId === recipientId).length, 1)
+  }
+
+  const campusAnnouncement = await request('/api/notices', { user: users[8], method: 'POST', body: {
+    title: 'Campus-wide sports announcement', description: 'The sports festival starts next week.',
+    category: 'Sports', priority: 'Normal', target: { type: 'EVERYONE' },
+    publishAt: new Date().toISOString(),
+  } })
+  assert.equal(campusAnnouncement.response.status, 201, campusAnnouncement.result.error)
+  assert.ok((await request('/api/notices', { user: users[0] })).result.notices.some((notice) => notice.id === campusAnnouncement.result.notice.id))
+  const studentSports = await request('/api/sports/student', { user: users[0] })
+  assert.ok(!studentSports.result.notices.some((notice) => notice.id === campusAnnouncement.result.notice.id), 'campus announcements remain in general Notices, not targeted Sports notices')
+  assert.equal((await request('/api/notices', { user: users[9] })).response.status, 403, 'Canteen Staff remains outside the campus notice audience')
+  const afterRead = await store.read()
+  const campusNoticeNotifications = afterRead.notifications.filter((entry) => entry.referenceId === campusAnnouncement.result.notice.id && entry.type === 'CAMPUS_NOTICE')
+  assert.ok(campusNoticeNotifications.length > 0)
+  assert.equal(campusNoticeNotifications.filter((entry) => entry.recipientUserId === users[0].id).length, 1)
+  await request('/api/notices', { user: users[0] })
+  const afterRefresh = await store.read()
+  assert.equal(afterRefresh.notifications.filter((entry) => entry.referenceId === campusAnnouncement.result.notice.id && entry.recipientUserId === users[0].id).length, 1, 'refreshing does not duplicate campus notice notifications')
+
+  const denied = await request('/api/notices', { user: captain, method: 'POST', body: {
+    title: 'Unauthorized campus post', description: 'Sports Captain remains sports-audience scoped.',
+    category: 'Sports', target: { type: 'EVERYONE' },
+  } })
+  assert.equal(denied.response.status, 403)
+})
+
 test('event and trial applications reject closed events and elapsed deadlines', async () => {
   const captain = users[7]
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -335,6 +378,109 @@ test('event and trial applications reject closed events and elapsed deadlines', 
   result = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...base, name: 'Passed test trial', date: yesterday, registrationDeadline: yesterday } })
   assert.equal(result.response.status, 201)
   assert.equal((await request(`/api/sports/events/${result.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })).response.status, 409, 'past events reject registration')
+})
+
+test('event and trial date/time values create and edit as stable campus-local fields', async () => {
+  const captain = users[7]
+  const eventBody = {
+    name: 'Clock picker regression trial', sportId: 'sport-cricket', kind: 'TRIAL',
+    date: '2099-08-15', time: '17:45', venue: 'Sports ground',
+    registrationRequired: true, registrationDeadline: '2099-08-10',
+    maxParticipants: 0, eligibility: 'All active students', eligibleDepartments: [],
+    description: 'Date and time should persist exactly as selected.',
+  }
+  const created = await request('/api/sports/events', { user: captain, method: 'POST', body: eventBody })
+  assert.equal(created.response.status, 201, created.result.error)
+  assert.equal(created.result.event.date, '2099-08-15')
+  assert.equal(created.result.event.time, '17:45')
+  assert.equal(created.result.event.registrationRequired, true)
+
+  const updated = await request(`/api/sports/events/${created.result.event.id}`, {
+    user: captain, method: 'PATCH', body: { date: '2099-08-16', time: '08:05:00', registrationDeadline: '2099-08-12' },
+  })
+  assert.equal(updated.response.status, 200, updated.result.error)
+  assert.equal(updated.result.event.date, '2099-08-16')
+  assert.equal(updated.result.event.time, '08:05')
+  assert.equal(updated.result.event.registrationDeadline, '2099-08-12')
+  const saved = await store.read()
+  const storedEvent = saved.sportsEvents.find((event) => event.id === created.result.event.id)
+  assert.equal(storedEvent.time, '08:05')
+  assert.equal(storedEvent.date, '2099-08-16')
+
+  const invalidTime = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...eventBody, name: 'Invalid clock value', time: '25:90' } })
+  assert.equal(invalidTime.response.status, 400)
+  assert.match(invalidTime.result.error, /valid event time/i)
+  const invalidDate = await request('/api/sports/events', { user: captain, method: 'POST', body: { ...eventBody, name: 'Invalid calendar date', date: '2099-02-30' } })
+  assert.equal(invalidDate.response.status, 400)
+  assert.match(invalidDate.result.error, /valid event date/i)
+})
+
+test('event registration is optional and legacy events default safely without rewriting stored records', async () => {
+  const captain = users[7]
+  const optional = await request('/api/sports/events', { user: captain, method: 'POST', body: {
+    name: 'No registration required', sportId: 'sport-cricket', kind: 'EVENT',
+    date: '2099-09-15', time: '12:30', venue: 'Main field',
+    registrationRequired: false, registrationDeadline: '', eligibleDepartments: [],
+    description: 'Attend without applying.',
+  } })
+  assert.equal(optional.response.status, 201, optional.result.error)
+  assert.equal(optional.result.event.registrationRequired, false)
+  assert.equal((await request(`/api/sports/events/${optional.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })).response.status, 409)
+
+  const legacy = {
+    id: 'legacy-sports-event', name: 'Legacy sports event', sportId: 'sport-cricket',
+    sportName: 'Cricket', kind: 'TRIAL', date: '2099-10-15', time: '10:30',
+    venue: 'Sports ground', registrationDeadline: '2099-10-10', status: 'OPEN',
+    eligibleDepartments: ['Computer Science'], description: 'Existing record without a registration setting.',
+  }
+  await store.transact((data) => { data.sportsEvents.unshift(legacy) })
+  const beforeRead = await store.read()
+  assert.equal(Object.hasOwn(beforeRead.sportsEvents.find((event) => event.id === legacy.id), 'registrationRequired'), false)
+  const fetched = await request('/api/sports/events', { user: users[0] })
+  assert.equal(fetched.result.events.find((event) => event.id === legacy.id).registrationRequired, true)
+  const afterRead = await store.read()
+  assert.equal(Object.hasOwn(afterRead.sportsEvents.find((event) => event.id === legacy.id), 'registrationRequired'), false)
+  const applied = await request(`/api/sports/events/${legacy.id}/register`, { user: users[0], method: 'POST', body: {} })
+  assert.equal(applied.response.status, 201, 'legacy events preserve their previous registration behavior')
+})
+
+test('Sports event departments normalize the six configured values and reject unrelated values', async () => {
+  const captain = users[7]
+  const configuredDepartments = ['BTech', 'BCA', 'Law', 'Pharmacy', 'Diploma', 'Management']
+  for (const department of configuredDepartments) {
+    const result = await request('/api/sports/events', { user: captain, method: 'POST', body: {
+      name: `${department} test trial`, sportId: 'sport-cricket', kind: 'TRIAL',
+      date: '2099-11-15', time: '09:00', venue: 'Sports ground',
+      registrationRequired: true, registrationDeadline: '2099-11-10',
+      eligibleDepartments: [` ${department.toLowerCase()} `], description: 'Department eligibility test.',
+    } })
+    assert.equal(result.response.status, 201, `${department}: ${result.result.error || ''}`)
+    assert.deepEqual(result.result.event.eligibleDepartments, [department])
+  }
+  const invalid = await request('/api/sports/events', { user: captain, method: 'POST', body: {
+    name: 'Unrelated department', sportId: 'sport-cricket', kind: 'TRIAL',
+    date: '2099-11-15', time: '09:00', venue: 'Sports ground',
+    registrationRequired: true, registrationDeadline: '2099-11-10',
+    eligibleDepartments: ['Computer Science'], description: 'Invalid Sports department should fail.',
+  } })
+  assert.equal(invalid.response.status, 400)
+  assert.match(invalid.result.error, /Sports departments/i)
+
+  const bcaEvent = await request('/api/sports/events', { user: captain, method: 'POST', body: {
+    name: 'BCA registration eligibility', sportId: 'sport-cricket', kind: 'TRIAL',
+    date: '2099-12-15', time: '10:00', venue: 'Sports ground',
+    registrationRequired: true, registrationDeadline: '2099-12-10',
+    eligibleDepartments: [' BCA '], description: 'BCA applicants may register.',
+  } })
+  assert.equal(bcaEvent.response.status, 201)
+  const originalCourse = (await store.read()).users.find((user) => user.id === users[0].id).course
+  await store.transact((data) => { data.users.find((user) => user.id === users[0].id).course = ' bCa ' })
+  try {
+    const application = await request(`/api/sports/events/${bcaEvent.result.event.id}/register`, { user: users[0], method: 'POST', body: {} })
+    assert.equal(application.response.status, 201, application.result.error)
+  } finally {
+    await store.transact((data) => { data.users.find((user) => user.id === users[0].id).course = originalCourse })
+  }
 })
 
 test('Administration retains sports access but cannot manage Canteen menu or orders', async () => {
