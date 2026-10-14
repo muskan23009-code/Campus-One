@@ -176,7 +176,7 @@ export const DEFAULT_CAMPUS_DATA = Object.freeze({
     { id: 'notice-scholarship', title: 'Scholarship renewal applications', description: 'Student Affairs applications close October 14.', active: true },
   ],
   food: [
-    { id: 'food-mess', title: 'North student mess', description: 'Lunch · 12:00–2:30 pm · Manual campus estimate', active: true, crowdLevel: 'Moderate', occupancyPercent: 68, estimatedWaitMinutes: 8, crowdUpdatedAt: '2026-10-04T09:00:00.000Z' },
+    { id: 'food-mess', title: 'North student mess', description: 'College Mess meal information', active: true },
     { id: 'food-canteen', title: 'Sunrise canteen', description: 'Grilled paneer wrap · ₹90 · About 12 minutes', active: true },
   ],
   events: [

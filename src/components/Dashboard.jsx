@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Check,
   ChevronRight, Clock3, Flame, GraduationCap,
-  HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils, Waves,
+  HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils,
 } from 'lucide-react'
 import { campusPlaces, notices } from '../data/campusData'
 import { api } from '../api/client'
@@ -15,7 +15,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
   const [prompt, setPrompt] = useState('')
   const [currentOrder, setCurrentOrder] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
-  const [messEstimate, setMessEstimate] = useState(null)
   const mealMenus = {
     Breakfast: [['Idli with sambhar', 'South Indian · Vegetarian'], ['Aloo paratha', 'North Indian · Vegetarian'], ['Masala omelette', 'Protein-rich · Contains egg']],
     Lunch: [['Dal makhani & jeera rice', 'North Indian · Vegetarian'], ['Paneer tikka wrap', 'Chef’s special · Vegetarian'], ['Seasonal fruit bowl', 'Fresh today · Vegan']],
@@ -24,10 +23,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 
   useEffect(() => {
     let active = true
-    if (!['Student', 'Staff', 'Administration'].includes(user.role)) return () => { active = false }
-    api('/api/campus/food').then((result) => {
-      if (active) setMessEstimate(result.records.find((record) => record.id === 'food-mess') || result.records.find((record) => record.title.toLowerCase().includes('mess')) || null)
-    }).catch(() => {})
+    if (user.role !== 'Student') return () => { active = false }
     if (user.role === 'Student') api('/api/food/orders').then((result) => {
       if (active && result.orders.length) setCurrentOrder(result.orders[0])
     }).catch(() => {})
@@ -64,7 +60,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 
       <section className="metrics-row" aria-label="Campus snapshot">
         <div className="metric-card"><span className="metric-icon icon-rust"><CalendarDays size={17} /></span><div className="metric-copy"><span className="metric-label">YOUR NEXT CLASS</span><strong>Data structures</strong><span className="metric-sub">10:30 am · Block A, Room 204</span></div><span className="metric-indicator indicator-rust"><Clock3 size={13} /> IN 24 MIN</span></div>
-        <div className="metric-card"><span className="metric-icon icon-leaf"><Waves size={18} /></span><div className="metric-copy"><span className="metric-label">NORTH MESS · MANUAL ESTIMATE</span><strong>{messEstimate?.crowdLevel ? `${messEstimate.crowdLevel} crowd` : 'Moderately busy'}</strong><span className="metric-sub">{messEstimate ? `${messEstimate.occupancyPercent ?? 68}% occupancy · ${messEstimate.estimatedWaitMinutes ?? 8} min wait` : '68% occupancy · 8 min wait'}</span></div><span className="occupancy-indicator"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
+        <button type="button" className="metric-card dining-shortcut" onClick={() => onNavigate('food')}><span className="metric-icon icon-leaf"><Utensils size={17} /></span><span className="metric-copy"><span className="metric-label">CAMPUS DINING</span><strong>Canteen & College Mess</strong><span className="metric-sub">Menus, orders, and meal timings</span></span><ArrowRight size={15} /></button>
       </section>
 
       <section className="main-dashboard-grid">
@@ -77,7 +73,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
         </div>
 
         <aside className="side-column">
-          <section className="meal-panel"><div className="meal-header"><div><span className="section-eyebrow">FRESH FROM THE MESS</span><h3>On today’s menu</h3></div><span className="meal-icon"><Utensils size={17} /></span></div><div className="meal-tabs" role="tablist" aria-label="Meal time">{['Breakfast', 'Lunch', 'Dinner'].map((meal) => <button key={meal} role="tab" aria-selected={selectedMeal === meal} className={selectedMeal === meal ? 'meal-tab-active' : ''} onClick={() => { setSelectedMeal(meal); setSelectedItem(mealMenus[meal][0][0]) }}>{meal}</button>)}</div><div className="menu-list">{mealMenus[selectedMeal].map(([name, detail], index) => <button type="button" className={`menu-item ${selectedItem === name ? 'menu-item-selected' : ''}`} aria-pressed={selectedItem === name} key={name} onClick={() => setSelectedItem(name)}><span className={`menu-index ${index === 0 ? 'menu-index-featured' : ''}`}>{String(index + 1).padStart(2, '0')}</span><span className="menu-item-copy"><strong>{name}</strong><span>{detail}</span></span>{index === 0 && <span className="chef-pick">TODAY’S PICK</span>}</button>)}</div><div className="order-row"><div className="menu-service"><span className="service-dot" />{currentOrder ? `${currentOrder.orderNumber} · ${currentOrder.status}` : `Serving until 2:30 pm · ${selectedItem}`}</div><button className={`order-button ${orderBusy ? 'order-complete' : ''}`} disabled={orderBusy || user.role !== 'Student'} onClick={preorder}>{orderBusy ? 'Placing…' : currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing' ? <>Track order <ArrowRight size={13}/></> : <>Pre-order <ArrowRight size={13} /></>}</button></div></section>
+          <section className="meal-panel"><div className="meal-header"><div><span className="section-eyebrow">CANTEEN PRE-ORDER</span><h3>Quick canteen order</h3></div><span className="meal-icon"><Utensils size={17} /></span></div><div className="meal-tabs" role="tablist" aria-label="Meal time">{['Breakfast', 'Lunch', 'Dinner'].map((meal) => <button key={meal} role="tab" aria-selected={selectedMeal === meal} className={selectedMeal === meal ? 'meal-tab-active' : ''} onClick={() => { setSelectedMeal(meal); setSelectedItem(mealMenus[meal][0][0]) }}>{meal}</button>)}</div><div className="menu-list">{mealMenus[selectedMeal].map(([name, detail], index) => <button type="button" className={`menu-item ${selectedItem === name ? 'menu-item-selected' : ''}`} aria-pressed={selectedItem === name} key={name} onClick={() => setSelectedItem(name)}><span className={`menu-index ${index === 0 ? 'menu-index-featured' : ''}`}>{String(index + 1).padStart(2, '0')}</span><span className="menu-item-copy"><strong>{name}</strong><span>{detail}</span></span>{index === 0 && <span className="chef-pick">TODAY’S PICK</span>}</button>)}</div><div className="order-row"><div className="menu-service"><span className="service-dot" />{currentOrder ? `${currentOrder.orderNumber} · ${currentOrder.status}` : `Selected · ${selectedItem}`}</div><button className={`order-button ${orderBusy ? 'order-complete' : ''}`} disabled={orderBusy || user.role !== 'Student'} onClick={preorder}>{orderBusy ? 'Placing…' : currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing' ? <>Track order <ArrowRight size={13}/></> : <>Pre-order <ArrowRight size={13} /></>}</button></div></section>
 
           <button className="event-panel" onClick={() => onNavigate('events')}><div className="event-image" /><div className="event-info"><span className="event-label"><CalendarDays size={12} /> COMING UP ON CAMPUS</span><strong>Ideas look better<br />when shared.</strong><span className="event-name">Design week · Opening night</span><span className="event-time">THU, OCT 8 <i /> 5:00 PM <i /> MAIN AUDITORIUM</span></div><span className="event-arrow"><ArrowUpRight size={15} /></span></button>
 

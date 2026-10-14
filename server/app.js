@@ -21,8 +21,7 @@ const COMPLAINT_CATEGORIES = Object.freeze([
   'Sports', 'Transport', 'Infrastructure', 'Security', 'IT/Technical', 'Other',
 ])
 const COMPLAINT_STATUSES = Object.freeze(['SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'])
-const MESS_MEALS = Object.freeze(['Breakfast', 'Lunch', 'Dinner'])
-const MESS_CROWD_LEVELS = Object.freeze(['Low', 'Medium', 'High'])
+const MESS_MEALS = Object.freeze(['Breakfast', 'Brunch', 'Lunch', 'Dinner'])
 const LOST_FOUND_CATEGORIES = Object.freeze([
   'ID Card', 'Mobile/Device', 'Books/Notes', 'Wallet/Bag', 'Keys', 'Clothing',
   'Accessories', 'Sports Equipment', 'Other',
@@ -75,6 +74,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const cookieHeader = request.headers.cookie || ''
     const part = cookieHeader.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`))
     return part ? part.slice(name.length + 1) : ''
+  }
+
+  function safeDecodeURIComponent(value) {
+    if (typeof value !== 'string') return ''
+    try { return decodeURIComponent(value) } catch { return '' }
   }
 
   async function body(request) {
@@ -477,7 +481,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         return json(response, 200, { department: user.department, requests: requests.map(publicRegistration) })
       }
       if (hodQueue[1] === 'requests' && hodQueue[2] && request.method === 'GET') {
-        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && candidate.fields.department === user.department)
+        const application = data.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && candidate.fields.department === user.department)
         if (!application) return reject(response, 404, 'This student request is not in your department.')
         return json(response, 200, { request: publicRegistration(application) })
       }
@@ -485,7 +489,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         const input = await body(request)
         if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Accept or Reject.')
         const result = await store.transact(async (current) => {
-          const application = current.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]))
+          const application = current.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(hodQueue[2]))
           if (!application || application.role !== ROLES.STUDENT || application.fields.department !== user.department) throw Object.assign(new Error('This student request is not in your department.'), { status: 404 })
           if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
           application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
@@ -545,7 +549,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Allow/Accept or Reject.')
       const result = await store.transact(async (data) => {
-        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(adminRequest[1]))
+        const application = data.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(adminRequest[1]))
         if (!application || ![ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role)) throw Object.assign(new Error('This Administration request was not found.'), { status: 404 })
         if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
         application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
@@ -657,7 +661,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const notificationRoute = pathname.match(/^\/api\/notifications\/([^/]+)$/)
     if (notificationRoute && request.method === 'PATCH') {
       const updated = await store.transact((data) => {
-        const notification = (data.notifications || []).find((item) => item.id === decodeURIComponent(notificationRoute[1]) && item.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || item.target === 'canteen'))
+        const notification = (data.notifications || []).find((item) => item.id === safeDecodeURIComponent(notificationRoute[1]) && item.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || item.target === 'canteen'))
         if (!notification) throw Object.assign(new Error('Notification not found.'), { status: 404 })
         notification.readAt ||= new Date().toISOString()
         return notification
@@ -667,7 +671,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const noticeReadRoute = pathname.match(/^\/api\/notices\/([^/]+)\/read$/)
     if (noticeReadRoute && request.method === 'POST') {
-      const noticeId = decodeURIComponent(noticeReadRoute[1])
+      const noticeId = safeDecodeURIComponent(noticeReadRoute[1])
       const updated = await store.transact((data) => {
         const notice = campusNotices(data).find((entry) => entry.id === noticeId)
         if (!notice || !notice.recipientIds?.includes(user.id) && notice.createdBy !== user.id) throw Object.assign(new Error('Notice not found.'), { status: 404 })
@@ -717,7 +721,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         deliverDueNoticeNotifications(current)
         return current
       })
-      const notice = campusNotices(data).find((entry) => entry.id === decodeURIComponent(noticeDetailsRoute[1]) &&
+      const notice = campusNotices(data).find((entry) => entry.id === safeDecodeURIComponent(noticeDetailsRoute[1]) &&
         (entry.recipientIds?.includes(user.id) || entry.createdBy === user.id))
       if (!notice || Date.parse(notice.publishAt || notice.createdAt) > Date.now() || notice.expiresAt && Date.parse(notice.expiresAt) < Date.now()) return reject(response, 404, 'Notice not found.')
       const notification = (data.notifications || []).find((entry) => entry.recipientUserId === user.id && entry.referenceId === notice.id && entry.type === 'CAMPUS_NOTICE')
@@ -804,7 +808,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (user.role !== ROLES.CANTEEN) return reject(response, 403, 'Canteen Staff access is required to manage the menu.')
       const patch = validateCanteenItem(await body(request))
       const item = await store.transact((data) => {
-        const existing = (data.canteenMenu || []).find((candidate) => candidate.id === decodeURIComponent(canteenMenuRoute[1]))
+        const existing = (data.canteenMenu || []).find((candidate) => candidate.id === safeDecodeURIComponent(canteenMenuRoute[1]))
         if (!existing) throw Object.assign(new Error('Canteen menu item not found.'), { status: 404 })
         Object.assign(existing, patch, { updatedAt: new Date().toISOString() })
         return existing
@@ -866,7 +870,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       const transitions = { PENDING: ['ACCEPTED', 'REJECTED'], ACCEPTED: ['PREPARING'], PREPARING: ['READY'], READY: ['COMPLETED'] }
       const result = await store.transact((data) => {
-        const order = (data.canteenOrders || []).find((candidate) => candidate.id === decodeURIComponent(canteenOrderRoute[1]))
+        const order = (data.canteenOrders || []).find((candidate) => candidate.id === safeDecodeURIComponent(canteenOrderRoute[1]))
         if (!order) throw Object.assign(new Error('Canteen order not found.'), { status: 404 })
         if (!transitions[order.status]?.includes(input.status)) throw Object.assign(new Error('That order status transition is not allowed.'), { status: 409 })
         const now = new Date().toISOString()
@@ -883,11 +887,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (pathname === '/api/mess' && request.method === 'GET') {
       if (!canAccess(user, 'food')) return reject(response, 403, 'Your role cannot access College Mess information.')
       const data = await store.read()
-      const notices = (data.messNotices || []).filter((notice) => user.role === ROLES.ADMIN || notice.active)
-      return json(response, 200, {
-        settings: normalizeMessSettings(data.messSettings),
-        notices: notices.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map(publicMessNotice),
-      })
+      return json(response, 200, { settings: normalizeMessSettings(data.messSettings) })
     }
 
     if (pathname === '/api/mess/settings' && request.method === 'PATCH') {
@@ -895,34 +895,6 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const settings = validateMessSettings(await body(request))
       await store.transact((data) => { data.messSettings = settings })
       return json(response, 200, { settings })
-    }
-
-    if (pathname === '/api/mess/notices' && request.method === 'POST') {
-      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to publish College Mess notices.')
-      const input = validateMessNotice(await body(request))
-      const notice = await store.transact((data) => {
-        data.messNotices ??= []
-        const now = new Date().toISOString()
-        const created = { id: randomUUID(), ...input, active: true, createdBy: user.id, createdAt: now, updatedAt: now }
-        data.messNotices.unshift(created)
-        notifyMessStudents(data, created, addNotification)
-        return created
-      })
-      return json(response, 201, { notice: publicMessNotice(notice) })
-    }
-
-    const messNoticeRoute = pathname.match(/^\/api\/mess\/notices\/([^/]+)$/)
-    if (messNoticeRoute && request.method === 'PATCH') {
-      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage College Mess notices.')
-      const patch = validateMessNoticePatch(await body(request))
-      const notice = await store.transact((data) => {
-        const current = (data.messNotices || []).find((entry) => entry.id === decodeURIComponent(messNoticeRoute[1]))
-        if (!current) throw Object.assign(new Error('College Mess notice not found.'), { status: 404 })
-        Object.assign(current, patch, { updatedAt: new Date().toISOString() })
-        if (current.active) notifyMessStudents(data, current, addNotification)
-        return current
-      })
-      return json(response, 200, { notice: publicMessNotice(notice) })
     }
 
     if (pathname === '/api/food/orders' && request.method === 'GET') {
@@ -961,7 +933,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const userRoute = pathname.match(/^\/api\/users\/([^/]+)(?:\/(reset-password))?$/)
     if (userRoute && request.method === 'PATCH') {
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
-      const targetId = decodeURIComponent(userRoute[1])
+      const targetId = safeDecodeURIComponent(userRoute[1])
       const input = await body(request)
       if (input.role !== undefined) return reject(response, 400, 'Campus roles cannot be changed by editing an account; review a pending access request instead.')
       const updated = await store.transact((data) => {
@@ -991,7 +963,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     if (userRoute && !userRoute[2] && request.method === 'DELETE') {
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
-      const targetId = decodeURIComponent(userRoute[1])
+      const targetId = safeDecodeURIComponent(userRoute[1])
       const deleted = await store.transact((data) => {
         const targetIndex = data.users.findIndex((candidate) => candidate.id === targetId)
         if (targetIndex < 0) throw Object.assign(new Error('User not found.'), { status: 404 })
@@ -1012,21 +984,21 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const campusRoute = pathname.match(/^\/api\/campus\/([^/]+)(?:\/([^/]+))?$/)
     if (campusRoute) {
-      const collection = decodeURIComponent(campusRoute[1])
+      const collection = safeDecodeURIComponent(campusRoute[1])
       if (!MANAGEMENT_COLLECTIONS.includes(collection)) return reject(response, 404, 'Campus collection not found.')
       if (!canAccess(user, CAMPUS_MODULES[collection])) return reject(response, 403, 'Your role cannot access this campus service.')
       if (request.method === 'GET') {
         const data = await store.read()
         const records = data.campus?.[collection] ?? DEFAULT_CAMPUS_DATA[collection] ?? []
         const visible = records.filter((record) => record.active && (collection !== 'notices' || !record.recipientIds || record.recipientIds.includes(user.id)))
-        return json(response, 200, { records: visible.map((record) => collection === 'notices' ? publicCampusNotice(record, user.id) : record) })
+        return json(response, 200, { records: visible.map((record) => collection === 'notices' ? publicCampusNotice(record, user.id) : collection === 'food' ? publicCampusFoodRecord(record) : record) })
       }
       if (collection === 'notices') return reject(response, 403, 'Use the role-scoped Notices & Announcements system to issue notices.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage campus data.')
       if (request.method === 'POST' && !campusRoute[2]) {
         const input = await body(request)
+        if (collection === 'food' && hasRemovedCrowdFields(input)) return reject(response, 400, 'Crowd estimates are no longer supported in campus food records.')
         const record = validateRecord(input)
-        if (collection === 'food' && hasManualCrowd(input)) Object.assign(record, validateManualCrowd(input))
         const created = await store.transact((data) => {
           const records = campusRecords(data, collection)
           record.id = randomUUID()
@@ -1034,29 +1006,23 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           if (records.length > 200) throw Object.assign(new Error('This campus collection is full.'), { status: 400 })
           return record
         })
-        return json(response, 201, { record: created })
+        return json(response, 201, { record: collection === 'food' ? publicCampusFoodRecord(created) : created })
       }
       if (campusRoute[2] && request.method === 'PATCH') {
         const input = await body(request)
+        if (collection === 'food' && hasRemovedCrowdFields(input)) return reject(response, 400, 'Crowd estimates are no longer supported in campus food records.')
         const patch = validateRecord(input)
-        if (collection === 'food' && hasManualCrowd(input)) Object.assign(patch, validateManualCrowd(input))
         const updated = await store.transact((data) => {
-          const record = campusRecords(data, collection).find((candidate) => candidate.id === decodeURIComponent(campusRoute[2]))
+          const record = campusRecords(data, collection).find((candidate) => candidate.id === safeDecodeURIComponent(campusRoute[2]))
           if (!record) throw Object.assign(new Error('Campus record not found.'), { status: 404 })
           record.title = patch.title
           record.description = patch.description
-          if (collection === 'food' && hasManualCrowd(input)) {
-            record.crowdLevel = patch.crowdLevel
-            record.occupancyPercent = patch.occupancyPercent
-            record.estimatedWaitMinutes = patch.estimatedWaitMinutes
-            record.crowdUpdatedAt = patch.crowdUpdatedAt
-          }
           return record
         })
-        return json(response, 200, { record: updated })
+        return json(response, 200, { record: collection === 'food' ? publicCampusFoodRecord(updated) : updated })
       }
       if (campusRoute[2] && request.method === 'DELETE') {
-        const id = decodeURIComponent(campusRoute[2])
+        const id = safeDecodeURIComponent(campusRoute[2])
         const found = await store.transact((data) => {
           const record = campusRecords(data, collection).find((candidate) => candidate.id === id)
           if (!record) return false
@@ -1154,7 +1120,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const lostFoundPhotoRoute = pathname.match(/^\/api\/lost-found\/([^/]+)\/photo$/)
     if (lostFoundPhotoRoute && request.method === 'GET') {
       const data = await store.read()
-      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundPhotoRoute[1]))
+      const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundPhotoRoute[1]))
       if (!report || !canViewLostFound(user, report) || !report.photo) return reject(response, 404, 'Lost-and-found photo not found.')
       let photo
       try { photo = await store.readLostFoundPhoto(report.photo.photoId, report.photo.mimeType) } catch (error) {
@@ -1179,7 +1145,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (details.length < 15) return reject(response, 400, 'Provide at least 15 characters of identifying details.')
       if (!/^[a-f\d-]{36}$/i.test(submissionKey)) return reject(response, 400, 'Refresh the claim form and submit again.')
       const updated = await store.transact((data) => {
-        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[1]))
         if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!canViewLostFound(user, report)) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (report.type !== 'FOUND' || report.reporterId === user.id || ['RETURNED', 'CLOSED', 'CLAIM_VERIFIED'].includes(report.status)) {
@@ -1216,10 +1182,10 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (!['VERIFIED', 'REJECTED'].includes(input.decision)) return reject(response, 400, 'Choose whether to verify or reject this claim.')
       const result = await store.transact((data) => {
-        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[1]))
         if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, report)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
-        const claim = (report.claimRequests || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[2]))
+        const claim = (report.claimRequests || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[2]))
         if (!claim) throw Object.assign(new Error('Claim request not found.'), { status: 404 })
         if (claim.status !== 'PENDING' || report.status !== 'CLAIM_REQUESTED') throw Object.assign(new Error('This claim has already been reviewed.'), { status: 409 })
         const now = new Date().toISOString()
@@ -1261,7 +1227,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const message = safeText((await body(request)).message, 2000)
       if (message.length < 2) return reject(response, 400, 'Add an official note of at least two characters.')
       const report = await store.transact((data) => {
-        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundNoteRoute[1]))
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === safeDecodeURIComponent(lostFoundNoteRoute[1]))
         if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
         const now = new Date().toISOString()
@@ -1275,7 +1241,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const lostFoundReportRoute = pathname.match(/^\/api\/lost-found\/([^/]+)$/)
     if (lostFoundReportRoute && request.method === 'GET') {
       const data = await store.read()
-      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundReportRoute[1]))
+      const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundReportRoute[1]))
       if (!report || !canViewLostFound(user, report)) return reject(response, 404, 'Lost & Found report not found.')
       return json(response, 200, { report: publicLostFoundReport(report, user) })
     }
@@ -1285,7 +1251,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (Object.keys(input).length !== 1 || !['RETURNED', 'CLOSED'].includes(input.status)) return reject(response, 400, 'Choose an allowed Lost & Found status update.')
       const report = await store.transact((data) => {
-        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundReportRoute[1]))
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === safeDecodeURIComponent(lostFoundReportRoute[1]))
         if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
         if (input.status === 'RETURNED' && item.status !== 'CLAIM_VERIFIED') throw Object.assign(new Error('Verify a claim before marking an item returned.'), { status: 409 })
@@ -1379,7 +1345,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const complaintPhotoRoute = pathname.match(/^\/api\/complaints\/([^/]+)\/photo$/)
     if (complaintPhotoRoute && request.method === 'GET') {
       const data = await store.read()
-      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintPhotoRoute[1]))
+      const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintPhotoRoute[1]))
       if (!record || !canViewComplaint(user, normalizeComplaint(record, data.users))) return reject(response, 404, 'Complaint photo not found.')
       const complaint = normalizeComplaint(record, data.users)
       if (!complaint.photo) return reject(response, 404, 'Complaint photo not found.')
@@ -1401,7 +1367,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const complaintRoute = pathname.match(/^\/api\/complaints\/([^/]+)(?:\/(notes))?$/)
     if (complaintRoute && request.method === 'GET') {
       const data = await store.read()
-      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+      const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
       if (!record) return reject(response, 404, 'Complaint not found.')
       const complaint = normalizeComplaint(record, data.users)
       if (!canViewComplaint(user, complaint)) return reject(response, 404, 'Complaint not found.')
@@ -1413,7 +1379,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const message = safeText((await body(request)).message, 2000)
       if (message.length < 2) return reject(response, 400, 'Add an official update of at least two characters.')
       const updated = await store.transact((data) => {
-        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
         if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
         const complaint = normalizeComplaint(record, data.users)
         if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
@@ -1439,7 +1405,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (input.assignedTo !== undefined && user.role !== ROLES.ADMIN) return reject(response, 403, 'Only Administration can assign complaints.')
       if (input.assignedTo !== undefined && input.assignedTo !== null && typeof input.assignedTo !== 'string') return reject(response, 400, 'Choose a valid Staff assignment.')
       const updated = await store.transact((data) => {
-        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
         if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
         const complaint = normalizeComplaint(record, data.users)
         if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
@@ -1585,7 +1551,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const { status } = await body(request)
       if (!['APPROVED', 'REJECTED'].includes(status)) return reject(response, 400, 'Choose Approved or Rejected.')
       const updated = await store.transact((data) => {
-        const application = (data.sportsMembershipApplications || []).find((entry) => entry.id === decodeURIComponent(sportsMembershipApplicationRoute[1]))
+        const application = (data.sportsMembershipApplications || []).find((entry) => entry.id === safeDecodeURIComponent(sportsMembershipApplicationRoute[1]))
         if (!application) throw Object.assign(new Error('Sports membership application not found.'), { status: 404 })
         if (application.status !== 'APPLIED') throw Object.assign(new Error('This application has already been reviewed.'), { status: 409 })
         const student = activeStudent(data, application.studentId)
@@ -1621,7 +1587,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const { status } = await body(request)
       if (status !== 'CANCELLED') return reject(response, 400, 'Applications can only be cancelled.')
       const updated = await store.transact((data) => {
-        const application = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(pathname.match(/^\/api\/sports\/applications\/([^/]+)$/)[1]))
+        const application = data.sportsRegistrations.find((entry) => entry.id === safeDecodeURIComponent(pathname.match(/^\/api\/sports\/applications\/([^/]+)$/)[1]))
         if (!application || application.studentId !== user.id) throw Object.assign(new Error('Sports application not found.'), { status: 404 })
         if (!['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(application.status)) throw Object.assign(new Error('This application can no longer be cancelled.'), { status: 409 })
         application.status = 'CANCELLED'
@@ -1688,7 +1654,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsRoute = pathname.match(/^\/api\/sports\/([^/]+)$/)
     if (sportsRoute && (request.method === 'PATCH' || request.method === 'DELETE')) {
       if (!sportsManager) return reject(response, 403, 'Sports Captain or Administration access is required.')
-      const id = decodeURIComponent(sportsRoute[1])
+      const id = safeDecodeURIComponent(sportsRoute[1])
       if (request.method === 'DELETE') return reject(response, 409, 'Sports records are retained for historical references. Deactivate the sport instead.')
       const input = await body(request)
       const updated = await store.transact((data) => {
@@ -1729,7 +1695,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const sportsEventRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)$/)
     if (sportsEventRoute && request.method === 'PATCH') {
-      const eventId = decodeURIComponent(sportsEventRoute[1])
+      const eventId = safeDecodeURIComponent(sportsEventRoute[1])
       const input = await body(request)
       const updated = await store.transact((data) => {
         const event = data.sportsEvents.find((entry) => entry.id === eventId)
@@ -1748,7 +1714,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsRegistrationRoute && request.method === 'POST') {
       if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(user.role)) return reject(response, 403, 'Your role cannot apply for sports events.')
       const registration = await store.transact((data) => {
-        const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsRegistrationRoute[1]))
+        const event = data.sportsEvents.find((entry) => entry.id === safeDecodeURIComponent(sportsRegistrationRoute[1]))
         if (!event || event.status !== 'OPEN') throw Object.assign(new Error('This event or trial is not open for registration.'), { status: 409 })
         if (event.registrationRequired === false) throw Object.assign(new Error('This event or trial does not require registration.'), { status: 409 })
         if (!sportFor(data, event.sportId)) throw Object.assign(new Error('This event’s sport is no longer active.'), { status: 409 })
@@ -1775,7 +1741,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const { status } = await body(request)
       const transitions = { APPLIED: ['SHORTLISTED', 'REJECTED'], REGISTERED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: ['REJECTED'], REJECTED: [], CANCELLED: [] }
       const updated = await store.transact((data) => {
-        const registration = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(sportsParticipantRoute[1]))
+        const registration = data.sportsRegistrations.find((entry) => entry.id === safeDecodeURIComponent(sportsParticipantRoute[1]))
         if (!registration) throw Object.assign(new Error('Sports registration not found.'), { status: 404 })
         if (!transitions[registration.status]?.includes(status)) throw Object.assign(new Error('That player selection transition is not allowed.'), { status: 409 })
         registration.status = status
@@ -1825,13 +1791,13 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsTeamRoute = pathname.match(/^\/api\/sports\/teams\/([^/]+)$/)
     if (sportsTeamRoute && request.method === 'GET') {
       const data = await store.read()
-      const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsTeamRoute[1]))
+      const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsTeamRoute[1]))
       return team ? json(response, 200, { team: publicSportsTeam(team, data.users) }) : reject(response, 404, 'Sports team not found.')
     }
     if (sportsTeamRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsTeamRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsTeamRoute[1]))
         if (!team) throw Object.assign(new Error('Sports team not found.'), { status: 404 })
         const next = validateSportsTeam({ ...team, ...input }, data, { partial: true })
         if (input.status !== undefined && !['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(input.status)) throw Object.assign(new Error('Choose ACTIVE, INACTIVE, or ARCHIVED team status.'), { status: 400 })
@@ -1863,7 +1829,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsMembersRoute && request.method === 'POST' && !sportsMembersRoute[2]) {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         if (!team) throw Object.assign(new Error('Sports team not found.'), { status: 404 })
         if (team.status !== 'ACTIVE') throw Object.assign(new Error('Players can only be added to an active team.'), { status: 409 })
         const student = activeStudent(data, input.studentId)
@@ -1884,7 +1850,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsMembersRoute && sportsMembersRoute[2] && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         const member = team?.members.find((entry) => entry.studentId === normalizeUserId(sportsMembersRoute[2]))
         if (!team || !member) throw Object.assign(new Error('Team player not found.'), { status: 404 })
         if (!['ACTIVE', 'INACTIVE'].includes(input.status)) throw Object.assign(new Error('Choose ACTIVE or INACTIVE player status.'), { status: 400 })
@@ -1899,7 +1865,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
     if (sportsMembersRoute && sportsMembersRoute[2] && request.method === 'DELETE') {
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         const studentId = normalizeUserId(sportsMembersRoute[2])
         if (!team || !team.members.some((entry) => entry.studentId === studentId)) throw Object.assign(new Error('Team player not found.'), { status: 404 })
         if ([team.captainId, team.viceCaptainId].includes(studentId)) throw Object.assign(new Error('Assign a different captain or vice-captain before removing this player.'), { status: 409 })
@@ -1930,7 +1896,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsScheduleRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const schedule = data.sportsSchedules.find((entry) => entry.id === decodeURIComponent(sportsScheduleRoute[1]))
+        const schedule = data.sportsSchedules.find((entry) => entry.id === safeDecodeURIComponent(sportsScheduleRoute[1]))
         if (!schedule) throw Object.assign(new Error('Sports schedule not found.'), { status: 404 })
         Object.assign(schedule, validateSportsSchedule({ ...schedule, ...input }, data, { partial: true }), { updatedAt: new Date().toISOString() })
         return schedule
@@ -1999,7 +1965,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsAchievementRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const achievement = data.sportsAchievements.find((entry) => entry.id === decodeURIComponent(sportsAchievementRoute[1]))
+        const achievement = data.sportsAchievements.find((entry) => entry.id === safeDecodeURIComponent(sportsAchievementRoute[1]))
         if (!achievement) throw Object.assign(new Error('Sports achievement not found.'), { status: 404 })
         Object.assign(achievement, validateSportsAchievement({ ...achievement, ...input }, data, { partial: true }), { updatedAt: new Date().toISOString() })
         return achievement
@@ -2037,7 +2003,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
   async function serveStatic(request, response, pathname) {
     if (!staticDirectory) return false
-    const candidate = resolve(staticDirectory, `.${decodeURIComponent(pathname)}`)
+    const decodedPathname = safeDecodeURIComponent(pathname)
+    if (!decodedPathname || decodedPathname.includes('\0')) return false
+    const candidate = resolve(staticDirectory, `.${decodedPathname}`)
     if (!candidate.startsWith(`${resolve(staticDirectory)}/`) && candidate !== resolve(staticDirectory)) return false
     try {
       const info = await stat(candidate)
@@ -2282,18 +2250,13 @@ function validateRecord(input) {
   return { title, description }
 }
 
-function validateManualCrowd(input) {
-  const crowdLevel = input.crowdLevel || 'Moderate'
-  const occupancyPercent = input.occupancyPercent === undefined || input.occupancyPercent === '' ? 68 : Number(input.occupancyPercent)
-  const estimatedWaitMinutes = input.estimatedWaitMinutes === undefined || input.estimatedWaitMinutes === '' ? 8 : Number(input.estimatedWaitMinutes)
-  if (!['Low', 'Moderate', 'Busy'].includes(crowdLevel)) throw Object.assign(new Error('Choose a valid manual crowd estimate.'), { status: 400 })
-  if (!Number.isInteger(occupancyPercent) || occupancyPercent < 0 || occupancyPercent > 100) throw Object.assign(new Error('Manual estimated occupancy must be between 0 and 100%. '), { status: 400 })
-  if (!Number.isInteger(estimatedWaitMinutes) || estimatedWaitMinutes < 0 || estimatedWaitMinutes > 180) throw Object.assign(new Error('Manual estimated wait must be between 0 and 180 minutes.'), { status: 400 })
-  return { crowdLevel, occupancyPercent, estimatedWaitMinutes, crowdUpdatedAt: new Date().toISOString() }
+function hasRemovedCrowdFields(input) {
+  return ['crowdLevel', 'occupancyPercent', 'estimatedWaitMinutes', 'crowdUpdatedAt'].some((field) => Object.hasOwn(input || {}, field))
 }
 
-function hasManualCrowd(input) {
-  return ['crowdLevel', 'occupancyPercent', 'estimatedWaitMinutes'].some((field) => input[field] !== undefined)
+function publicCampusFoodRecord(record) {
+  const { crowdLevel, occupancyPercent, estimatedWaitMinutes, crowdUpdatedAt, ...publicRecord } = record
+  return publicRecord
 }
 
 function campusRecords(data, collection) {
@@ -2463,85 +2426,37 @@ function validateCanteenItem(input) {
 }
 
 function defaultMessSettings() {
-  return {
-    status: 'Closed',
-    timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '' }])),
-    crowdSchedule: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '', level: '' }])),
-  }
+  return { timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '' }])) }
 }
 
 function normalizeMessSettings(settings) {
   const defaults = defaultMessSettings()
-  if (!settings || typeof settings !== 'object') return defaults
-  const normalizeWindows = (source, includeLevel = false) => Object.fromEntries(MESS_MEALS.map((meal) => {
-    const value = source?.[meal] || {}
-    return [meal, {
-      start: typeof value.start === 'string' ? value.start : '',
-      end: typeof value.end === 'string' ? value.end : '',
-      ...(includeLevel ? { level: MESS_CROWD_LEVELS.includes(value.level) ? value.level : '' } : {}),
-    }]
-  }))
+  const timings = settings && typeof settings === 'object' ? settings.timings : null
   return {
-    status: settings.status === 'Open' ? 'Open' : 'Closed',
-    timings: normalizeWindows(settings.timings),
-    crowdSchedule: normalizeWindows(settings.crowdSchedule, true),
+    timings: Object.fromEntries(MESS_MEALS.map((meal) => {
+      const value = timings?.[meal] || {}
+      const start = typeof value.start === 'string' ? value.start : ''
+      const end = typeof value.end === 'string' ? value.end : ''
+      const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(start) && /^([01]\d|2[0-3]):[0-5]\d$/.test(end) && start !== end
+      return [meal, valid ? { start, end } : { start: '', end: '' }]
+    })),
   }
 }
 
-function validateTimeWindow(value, label, { level = false } = {}) {
+function validateTimeWindow(value, label) {
   const start = typeof value?.start === 'string' ? value.start : ''
   const end = typeof value?.end === 'string' ? value.end : ''
-  const crowdLevel = typeof value?.level === 'string' ? value.level : ''
-  if (!start && !end && (!level || !crowdLevel)) return { start: '', end: '', ...(level ? { level: '' } : {}) }
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start >= end) {
-    throw Object.assign(new Error(`${label} needs a valid start and end time on the same day.`), { status: 400 })
+  if (!start && !end) return { start: '', end: '' }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start === end) {
+    throw Object.assign(new Error(`${label} needs a valid start and end time. End times before the start are treated as overnight.`), { status: 400 })
   }
-  if (level && !MESS_CROWD_LEVELS.includes(crowdLevel)) {
-    throw Object.assign(new Error(`${label} needs a Low, Medium, or High crowd level.`), { status: 400 })
-  }
-  return { start, end, ...(level ? { level: crowdLevel } : {}) }
+  return { start, end }
 }
 
 function validateMessSettings(input) {
-  if (!input || !['Open', 'Closed'].includes(input.status)) {
-    throw Object.assign(new Error('Choose whether the College Mess is Open or Closed.'), { status: 400 })
-  }
+  if (!input || typeof input !== 'object') throw Object.assign(new Error('Provide College Mess meal timings.'), { status: 400 })
   return {
-    status: input.status,
     timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, validateTimeWindow(input.timings?.[meal], `${meal} timing`)])),
-    crowdSchedule: Object.fromEntries(MESS_MEALS.map((meal) => [meal, validateTimeWindow(input.crowdSchedule?.[meal], `${meal} crowd schedule`, { level: true })])),
-  }
-}
-
-function validateMessNotice(input) {
-  const title = typeof input?.title === 'string' ? input.title.trim() : ''
-  const description = typeof input?.description === 'string' ? input.description.trim() : ''
-  if (title.length < 3 || title.length > 120 || description.length < 3 || description.length > 5000) {
-    throw Object.assign(new Error('Mess notices need a title (3-120 characters) and details (3-5000 characters).'), { status: 400 })
-  }
-  return { title, description }
-}
-
-function validateMessNoticePatch(input) {
-  const patch = {}
-  if (Object.hasOwn(input || {}, 'title') || Object.hasOwn(input || {}, 'description')) Object.assign(patch, validateMessNotice(input))
-  if (Object.hasOwn(input || {}, 'active')) {
-    if (typeof input.active !== 'boolean') throw Object.assign(new Error('Notice active status must be true or false.'), { status: 400 })
-    patch.active = input.active
-  }
-  if (!Object.keys(patch).length) throw Object.assign(new Error('Include a notice edit or active-status change.'), { status: 400 })
-  return patch
-}
-
-function publicMessNotice(notice) {
-  const { id, title, description, active, createdBy, createdAt, updatedAt } = notice
-  return { id, title, description, active, createdBy, createdAt, updatedAt }
-}
-
-function notifyMessStudents(data, notice, addNotification) {
-  if (!notice.active) return
-  for (const student of data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT)) {
-    addNotification(data, { recipientUserId: student.id, title: 'College Mess notice', message: notice.title, referenceId: notice.id, target: 'food' })
   }
 }
 
@@ -2578,8 +2493,37 @@ function campusNotices(data) {
 function initializeCampusNotices(data) {
   data.campus ??= {}
   if (!Array.isArray(data.campus.notices)) data.campus.notices = [...(DEFAULT_CAMPUS_DATA.notices || [])]
-  const eligible = data.users.filter((candidate) => candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
+  const campusNoticeIds = new Set(data.campus.notices.map((notice) => notice.id))
+  const studentIds = data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT).map((candidate) => candidate.id)
   const now = new Date().toISOString()
+  for (const legacy of data.messNotices || []) {
+    const id = `mess-legacy-${legacy.id}`
+    if (!legacy.active || !legacy.id || campusNoticeIds.has(id)) continue
+    const createdAt = Number.isFinite(Date.parse(legacy.createdAt)) ? legacy.createdAt : now
+    data.campus.notices.push({
+      id,
+      title: typeof legacy.title === 'string' ? legacy.title : 'College Mess announcement',
+      description: typeof legacy.description === 'string' ? legacy.description : '',
+      category: 'Canteen',
+      priority: 'Normal',
+      pinned: false,
+      important: false,
+      target: { type: 'ROLE', role: ROLES.STUDENT },
+      publishAt: createdAt,
+      expiresAt: '',
+      attachmentUrl: '',
+      attachmentName: '',
+      active: true,
+      createdBy: '',
+      issuerName: 'College Mess',
+      issuerRole: ROLES.ADMIN,
+      recipientIds: studentIds,
+      readBy: {},
+      createdAt,
+    })
+    campusNoticeIds.add(id)
+  }
+  const eligible = data.users.filter((candidate) => candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
   for (const notice of campusNotices(data)) {
     if (!notice.recipientIds) {
       notice.category ||= /exam/i.test(notice.title) ? 'Examination' : 'General'

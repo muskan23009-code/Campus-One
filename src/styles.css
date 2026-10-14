@@ -928,6 +928,102 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .lost-found-claim-actions, .lost-found-manager-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .lost-found-claim-actions { flex: 1 1 100%; }
 .lost-found-manager-actions { margin-top: 13px; padding-top: 12px; border-top: 1px solid #eceee8; }
+.food-dine-page { --food-ink: #39281f; --food-muted: #806d60; --food-rust: #a94f2b; --food-orange: #d57b3e; --food-line: #efdfd2; padding-bottom: 30px; }
+.metric-card.dining-shortcut { width: 100%; text-align: left; cursor: pointer; }
+.metric-card.dining-shortcut > .metric-copy { flex: 1; }
+.metric-card.dining-shortcut > svg { flex: 0 0 auto; color: #8d6943; }
+.food-dine-hero { position: relative; display: flex; min-height: 214px; align-items: center; justify-content: space-between; gap: 22px; overflow: hidden; margin: 17px 0 22px; padding: 32px 38px; background: linear-gradient(112deg,#fbf0e2 0%,#f8e8d4 48%,#f3d8bd 100%); border: 1px solid #f0deca; border-radius: 21px; }
+.food-dine-hero-copy { position: relative; z-index: 1; max-width: 520px; }
+.food-dine-kicker { display: inline-flex; color: #a75a34; font-size: 9px; font-weight: 800; letter-spacing: 1.4px; }
+.food-dine-hero h1 { margin: 10px 0 8px; color: var(--food-ink); font-family: var(--serif); font-size: clamp(27px,4vw,39px); font-weight: 750; letter-spacing: -1.2px; line-height: 1.15; }
+.food-dine-hero h1 em { color: var(--food-rust); font-style: normal; }
+.food-dine-hero-copy p { max-width: 440px; margin: 0; color: #735f51; font-size: 12px; line-height: 1.7; }
+.food-dine-hero-art { position: relative; display: grid; width: 162px; height: 145px; flex: 0 0 auto; place-items: center; margin-right: 12%; color: #a6512f; }
+.food-dine-art-orbit { position: absolute; width: 130px; height: 130px; background: #e6b078; border: 1px solid #d9a16b; border-radius: 50%; box-shadow: 0 12px 30px #98572b20; }
+.food-dine-art-plate { position: relative; display: grid; width: 100px; height: 100px; place-items: center; color: #a85631; background: #fff9f0; border: 7px solid #f1ddc4; border-radius: 50%; box-shadow: 0 5px 12px #82421b22; }
+.food-dine-art-spark { position: absolute; top: 10px; right: 5px; color: #bd7638; font-size: 22px; }
+.food-dine-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 17px; }
+.food-dine-options-single { grid-template-columns: minmax(0,1fr); }
+.food-dine-option { position: relative; display: flex; min-height: 262px; flex-direction: column; align-items: flex-start; overflow: hidden; padding: 21px 23px 20px; text-align: left; color: var(--food-ink); background: #fff; border: 1px solid var(--food-line); border-radius: 18px; box-shadow: 0 8px 24px #633d2210; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.food-dine-option:hover { transform: translateY(-3px); border-color: #dfb996; box-shadow: 0 14px 32px #633d221b; }
+.food-dine-option-art { display: grid; width: 72px; height: 72px; place-items: center; align-self: flex-end; margin: 0 4px 4px 0; border-radius: 22px; }
+.canteen-option-art { color: #ab542f; background: linear-gradient(140deg,#f9dfc7,#f4c9a4); }
+.mess-option-art { color: #687b42; background: linear-gradient(140deg,#ecedcf,#dce1b6); }
+.food-dine-option > .food-dine-kicker { margin: 4px 0 6px; font-size: 8px; }
+.food-dine-option > strong { color: var(--food-ink); font-family: var(--serif); font-size: 21px; font-weight: 750; letter-spacing: -.45px; }
+.food-dine-option > span:nth-of-type(3) { max-width: 390px; margin-top: 7px; color: var(--food-muted); font-size: 11px; line-height: 1.7; }
+.food-dine-option > i { display: inline-flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 16px; color: var(--food-rust); font-size: 10px; font-style: normal; font-weight: 750; }
+.mess-page .mess-hero { min-height: 202px; }
+.mess-page .food-dine-back { position: absolute; top: 18px; right: 20px; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; color: #725b4a; background: #fff8f0b8; border: 1px solid #ead2b9; border-radius: 9px; font-size: 10px; cursor: pointer; }
+.mess-timings-panel, .mess-settings-panel, .mess-announcement-panel { margin-top: 16px; padding: 22px 24px; background: #fff; border: 1px solid #efdfd2; border-radius: 17px; box-shadow: 0 7px 22px #633d220a; }
+.food-dine-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 16px; }
+.food-dine-section-heading h2 { margin: 5px 0 0; color: var(--food-ink); font-family: var(--serif); font-size: 20px; letter-spacing: -.45px; }
+.food-dine-section-heading p { max-width: 620px; margin: 7px 0 0; color: var(--food-muted); font-size: 11px; line-height: 1.65; }
+.mess-timings-heading-icon, .mess-announcement-icon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; color: #a95731; background: #fbecdd; border-radius: 13px; }
+.mess-meal-list { display: grid; gap: 8px; }
+.mess-meal-row { display: grid; grid-template-columns: 34px minmax(90px,.7fr) minmax(180px,1.3fr); align-items: center; gap: 12px; min-height: 58px; padding: 10px 14px; border: 1px solid #f1e9df; border-radius: 12px; }
+.mess-meal-announced { background: #fffaf4; }
+.mess-meal-unannounced { background: #faf9f6; }
+.mess-meal-number { display: grid; width: 29px; height: 29px; place-items: center; color: #a45b38; background: #f8eadb; border-radius: 9px; font-size: 9px; font-weight: 800; }
+.mess-meal-name { color: #4d382a; font-size: 12px; font-weight: 750; }
+.mess-meal-row > strong { color: #627345; font-size: 11px; font-weight: 650; text-align: right; }
+.mess-meal-unannounced > strong { color: #978a7e; font-weight: 550; }
+.mess-timings-note { margin: 13px 1px 0; color: #948476; font-size: 10px; line-height: 1.6; }
+.mess-settings-panel { background: #fffdf9; }
+.mess-meal-settings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+.mess-meal-setting { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; min-width: 0; margin: 0; padding: 15px; border: 1px solid #f0e2d5; border-radius: 13px; }
+.mess-meal-setting legend { padding: 0 4px; color: #493528; font-size: 12px; font-weight: 750; }
+.mess-meal-setting legend span { margin-right: 8px; color: #b06a40; font-size: 9px; letter-spacing: .5px; }
+.mess-time-field { display: grid; min-width: 0; gap: 6px; color: #827265; font-size: 9px; font-weight: 700; }
+.mess-time-picker { display: flex; min-height: 38px; align-items: center; justify-content: center; gap: 3px; padding: 3px 5px; color: #947e6b; background: #fff; border: 1px solid #ebded2; border-radius: 9px; }
+.mess-time-picker select { min-width: 0; height: 30px; padding: 0 3px; color: #503d2f; background: transparent; border: 0; font-family: inherit; font-size: 10px; text-align: center; }
+.mess-time-picker select:first-child, .mess-time-picker select:nth-of-type(2) { flex: 1 1 34px; }
+.mess-time-picker select:last-child { flex: 1.4 1 54px; }
+.mess-time-picker select:focus-visible { outline: 2px solid #a95731; outline-offset: 1px; }
+.mess-config-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding-top: 13px; border-top: 1px solid #f1e6dc; }
+.mess-config-footer p { max-width: 530px; margin: 0; color: #8e7e70; font-size: 10px; line-height: 1.6; }
+.mess-config-footer .module-primary, .mess-announcement-panel > .module-primary { display: inline-flex; min-height: 37px; align-items: center; gap: 8px; padding: 0 14px; color: #fff; background: #a95731; border: 0; border-radius: 10px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.mess-config-footer .module-primary:hover, .mess-announcement-panel > .module-primary:hover { background: #874326; }
+.mess-config-footer .module-primary:disabled, .mess-announcement-panel .module-primary:disabled { opacity: .6; cursor: wait; }
+.mess-notice-form { display: grid; gap: 12px; margin-top: 13px; }
+.mess-notice-form > label { display: grid; gap: 6px; color: #827265; font-size: 9px; font-weight: 750; letter-spacing: .45px; }
+.mess-notice-form input, .mess-notice-form textarea { width: 100%; min-height: 39px; padding: 9px 11px; color: #49382c; background: #fff; border: 1px solid #ebded2; border-radius: 9px; font-size: 11px; }
+.mess-notice-form textarea { resize: vertical; line-height: 1.6; }
+.mess-announcement-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.mess-announcement-actions .module-primary { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; padding: 0 12px; color: #fff; background: #a95731; border: 0; border-radius: 9px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.mess-page .dashboard-footer, .food-dine-page > .dashboard-footer { margin-top: 19px; }
+@media (max-width: 760px) {
+  .food-dine-hero { min-height: 185px; padding: 25px; border-radius: 16px; }
+  .food-dine-hero-art { width: 125px; margin-right: 4%; transform: scale(.85); }
+  .food-dine-options { gap: 11px; }
+  .food-dine-option { min-height: 245px; padding: 17px; border-radius: 14px; }
+  .mess-timings-panel, .mess-settings-panel, .mess-announcement-panel { padding: 18px; border-radius: 14px; }
+  .mess-meal-settings { gap: 9px; }
+  .mess-meal-setting { padding: 12px; gap: 9px; }
+}
+@media (max-width: 560px) {
+  .food-dine-hero { min-height: 167px; gap: 4px; margin: 12px 0 16px; padding: 21px 16px; }
+  .food-dine-hero h1 { max-width: 250px; font-size: 27px; }
+  .food-dine-hero-copy p { max-width: 260px; font-size: 10px; }
+  .food-dine-hero-art { width: 84px; height: 100px; margin-right: -4px; transform: scale(.66); }
+  .food-dine-art-orbit { width: 120px; height: 120px; }
+  .food-dine-art-plate { width: 94px; height: 94px; }
+  .food-dine-options, .food-dine-options-single { grid-template-columns: minmax(0,1fr); }
+  .food-dine-option { min-height: 220px; padding: 16px; }
+  .food-dine-option-art { width: 58px; height: 58px; border-radius: 17px; }
+  .food-dine-option > strong { font-size: 19px; }
+  .mess-page .mess-hero { padding-top: 59px; }
+  .mess-page .food-dine-back { top: 12px; right: 12px; }
+  .mess-timings-panel, .mess-settings-panel, .mess-announcement-panel { padding: 15px 13px; }
+  .food-dine-section-heading h2 { font-size: 18px; }
+  .mess-meal-row { grid-template-columns: 30px minmax(75px,.75fr) minmax(112px,1.25fr); gap: 7px; min-height: 55px; padding: 8px; }
+  .mess-meal-name { font-size: 10px; }
+  .mess-meal-row > strong { font-size: 9px; }
+  .mess-meal-settings { grid-template-columns: minmax(0,1fr); }
+  .mess-meal-setting { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mess-config-footer { align-items: stretch; flex-direction: column; }
+  .mess-config-footer .module-primary { align-self: flex-start; }
+}
 .canteen-page { padding-bottom: 25px; }
 .canteen-hero { align-items: center; }
 .canteen-signout { min-height: 33px; padding: 0 11px; color: #61775c; font-size: 9px; background: #fff; border: 1px solid #e6ebe2; border-radius: 2px; cursor: pointer; }

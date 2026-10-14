@@ -248,7 +248,7 @@ export default function SecureApp() {
         {activePage === 'complaints' && <ComplaintCenter user={user} initialComplaintId={requestReference} initialCategory={new URLSearchParams(window.location.search).get('category') === 'Canteen/Mess' ? 'Canteen/Mess' : ''} initialOpen={new URLSearchParams(window.location.search).get('new') === '1'} onNotify={showToast}/>}
         {activePage === 'lost-found' && <LostFoundCenter user={user} initialReportId={requestReference} onNotify={showToast}/>}
         {activePage === 'notices' && user.role !== APP_ROLES.CANTEEN && <NoticeBoard user={user} onNotify={showToast}/>}
-        {['food', 'canteen'].includes(activePage) && <FoodAndDineIn user={user} initialSection={activePage === 'canteen' ? 'canteen' : 'home'} onNavigate={(page) => applyRoute(page)} onNotify={showToast} onMessFeedback={() => applyRoute('complaints', { messFeedback: true })}/>}
+        {['food', 'canteen'].includes(activePage) && <FoodAndDineIn user={user} initialSection={activePage === 'canteen' ? 'canteen' : 'home'} onNavigate={(page) => applyRoute(page)} onNotify={showToast}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
