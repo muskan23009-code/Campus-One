@@ -31,11 +31,17 @@ const LOST_FOUND_STATUSES = Object.freeze([
   'LOST', 'FOUND', 'MATCHED', 'CLAIM_REQUESTED', 'CLAIM_VERIFIED', 'RETURNED', 'CLOSED',
 ])
 const LOST_FOUND_PHOTO_BYTES_LIMIT = 1_000_000
+const HOSTEL_MAINTENANCE_CATEGORIES = Object.freeze(['Electrical', 'Plumbing', 'Furniture', 'Other'])
+const HOSTEL_MAINTENANCE_STATUSES = Object.freeze(['SUBMITTED', 'IN_PROGRESS', 'RESOLVED'])
+const HOSTEL_NAMES = Object.freeze(['B1', 'B2', 'B3', 'B4', 'G1', 'G2'])
+const HOSTEL_ROOM_TYPES = Object.freeze(['Single', 'Double', 'Triple', '4 Sharing', 'Shared'])
+const HOSTEL_ROOMMATE_LIMITS = Object.freeze({ Single: 0, Double: 1, Triple: 2, '4 Sharing': 3, Shared: 20 })
+const HOSTEL_ROOM_COOLING_OPTIONS = Object.freeze(['AC', 'Non-AC'])
 const PASSWORD_ATTEMPT_LIMIT = 10
 const PASSWORD_ATTEMPT_WINDOW = 15 * 60 * 1000
 const CAMPUS_MODULES = {
   notices: 'notices', food: 'food', events: 'events',
-  hostel: 'hostel', directory: 'directory', emergency: 'emergency',
+  directory: 'directory', emergency: 'emergency',
 }
 const DUMMY_CREDENTIALS = await hashPassword(randomUUID())
 const MIME_TYPES = {
@@ -981,6 +987,194 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (userRoute && userRoute[2] === 'reset-password') return reject(response, 410, 'Users change their own password through their campus account.')
+
+    const hostelRoute = pathname.match(/^\/api\/hostel(?:\/([^/]+))?(?:\/([^/]+))?$/)
+    if (hostelRoute) {
+      if (!canAccess(user, 'hostel')) return reject(response, 403, 'Your role cannot access Hostel services.')
+      const [, resource, resourceId] = hostelRoute
+
+      if (!resource && request.method === 'GET') {
+        const data = await store.read()
+        if (user.role === ROLES.ADMIN) {
+          const students = data.users.filter((candidate) => candidate.role === ROLES.STUDENT && candidate.active)
+          const studentById = new Map(students.map((student) => [student.id, student]))
+          const allotments = (data.hostelAllotments || []).map((allotment) => ({
+            ...publicHostelAllotment(allotment),
+            studentName: studentById.get(allotment.studentId)?.name || 'Inactive student',
+          }))
+          const residents = allotments
+            .filter((allotment) => allotment.status === 'ALLOTTED')
+            .map((allotment) => ({
+              studentId: allotment.studentId,
+              name: allotment.studentName,
+              department: studentById.get(allotment.studentId)?.department || '',
+              hostelName: allotment.hostelName,
+              block: allotment.block,
+              floor: allotment.floor,
+              roomNumber: allotment.roomNumber,
+            }))
+          const hostelDetails = (data.hostelDetails || []).map((entry) => ({
+            ...publicHostelDetails(entry),
+            studentName: studentById.get(entry.studentId)?.name || 'Inactive student',
+          }))
+          return json(response, 200, {
+            rooms: (data.hostelRooms || []).map(publicHostelRoom),
+            allotments,
+            residents,
+            hostelDetails,
+            maintenance: (data.hostelMaintenance || []).map((requestEntry) => ({
+              ...publicHostelMaintenance(requestEntry),
+              studentName: studentById.get(requestEntry.studentId)?.name || 'Inactive student',
+            })),
+            students: students.map(({ id, name, department }) => ({ id, name, department: department || '' })),
+          })
+        }
+        return json(response, 200, studentHostelView(data, user))
+      }
+
+      if (resource === 'details' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit their own Hostel details.')
+        const details = validateHostelDetails(await body(request))
+        const saved = await store.transact((data) => {
+          data.hostelDetails ??= []
+          const existing = data.hostelDetails.find((entry) => entry.studentId === user.id)
+          const now = new Date().toISOString()
+          if (existing) {
+            Object.assign(existing, details, { updatedAt: now })
+            return existing
+          }
+          const created = { ...details, studentId: user.id, createdAt: now, updatedAt: now }
+          data.hostelDetails.push(created)
+          return created
+        })
+        return json(response, 200, { hostelDetails: publicHostelDetails(saved) })
+      }
+
+      const hostelDetailsRoute = resource === 'details' && resourceId
+      if (hostelDetailsRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage Hostel details.')
+        const studentId = safeDecodeURIComponent(resourceId)
+        const details = validateHostelDetails(await body(request))
+        const saved = await store.transact((data) => {
+          data.hostelDetails ??= []
+          const existing = data.hostelDetails.find((entry) => entry.studentId === studentId)
+          if (!existing) throw Object.assign(new Error('Hostel details not found for this student.'), { status: 404 })
+          Object.assign(existing, details, { updatedAt: new Date().toISOString() })
+          return existing
+        })
+        const student = (await store.read()).users.find((candidate) => candidate.id === studentId)
+        return json(response, 200, {
+          hostelDetails: { ...publicHostelDetails(saved), studentName: student?.name || 'Inactive student' },
+        })
+      }
+
+      if (resource === 'rooms' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel rooms.')
+        const room = validateHostelRoom(await body(request))
+        const created = await store.transact((data) => {
+          data.hostelRooms ??= []
+          if (data.hostelRooms.some((entry) => sameHostelRoom(entry, room))) {
+            throw Object.assign(new Error('A room with this hostel, block, floor, and room number already exists.'), { status: 409 })
+          }
+          room.id = randomUUID()
+          room.createdAt = new Date().toISOString()
+          data.hostelRooms.unshift(room)
+          return room
+        })
+        return json(response, 201, { room: publicHostelRoom(created) })
+      }
+
+      const roomRoute = resource === 'rooms' && resourceId
+      if (roomRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel rooms.')
+        const patch = validateHostelRoom(await body(request))
+        const updated = await store.transact((data) => {
+          data.hostelRooms ??= []
+          const room = data.hostelRooms.find((entry) => entry.id === safeDecodeURIComponent(resourceId))
+          if (!room) throw Object.assign(new Error('Hostel room not found.'), { status: 404 })
+          if (data.hostelRooms.some((entry) => entry.id !== room.id && sameHostelRoom(entry, patch))) {
+            throw Object.assign(new Error('A room with this hostel, block, floor, and room number already exists.'), { status: 409 })
+          }
+          const occupancy = (data.hostelAllotments || []).filter((entry) => entry.roomId === room.id && entry.status === 'ALLOTTED').length
+          if (patch.capacity < occupancy) throw Object.assign(new Error('Room capacity cannot be lower than its current occupancy.'), { status: 400 })
+          Object.assign(room, patch, { updatedAt: new Date().toISOString() })
+          return room
+        })
+        return json(response, 200, { room: publicHostelRoom(updated) })
+      }
+
+      if (resource === 'allotments' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel allotments.')
+        const input = await body(request)
+        if (hasHostelBedFields(input)) return reject(response, 400, 'Bed and seat numbers are not part of hostel allotments.')
+        const studentId = safeText(input.studentId, 64)
+        const roomId = safeText(input.roomId, 64)
+        if (!studentId || !roomId) return reject(response, 400, 'Choose a student and a hostel room.')
+        const created = await store.transact((data) => {
+          data.hostelRooms ??= []
+          data.hostelAllotments ??= []
+          const student = data.users.find((candidate) => candidate.id === studentId && candidate.role === ROLES.STUDENT && candidate.active)
+          if (!student) throw Object.assign(new Error('Choose an active student account.'), { status: 400 })
+          const room = data.hostelRooms.find((candidate) => candidate.id === roomId)
+          if (!room) throw Object.assign(new Error('Choose a valid hostel room.'), { status: 400 })
+          const previous = data.hostelAllotments.find((entry) => entry.studentId === student.id && entry.status === 'ALLOTTED')
+          if (previous?.roomId === room.id) throw Object.assign(new Error('This student is already allotted to that room.'), { status: 409 })
+          const occupancy = data.hostelAllotments.filter((entry) => entry.roomId === room.id && entry.status === 'ALLOTTED').length
+          if (occupancy >= room.capacity) throw Object.assign(new Error('This room is at capacity.'), { status: 409 })
+          const now = new Date().toISOString()
+          if (previous) {
+            previous.status = 'TRANSFERRED'
+            previous.endedAt = now
+          }
+          const allotment = {
+            id: randomUUID(),
+            studentId: student.id,
+            roomId: room.id,
+            hostelName: room.hostelName,
+            block: room.block,
+            floor: room.floor,
+            roomNumber: room.roomNumber,
+            status: 'ALLOTTED',
+            createdAt: now,
+            endedAt: '',
+          }
+          data.hostelAllotments.unshift(allotment)
+          return { ...allotment, studentName: student.name }
+        })
+        return json(response, 201, { allotment: { ...publicHostelAllotment(created), studentName: created.studentName } })
+      }
+
+      if (resource === 'maintenance' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit hostel maintenance requests.')
+        const requestEntry = validateHostelMaintenance(await body(request), user)
+        const created = await store.transact((data) => {
+          data.hostelMaintenance ??= []
+          requestEntry.id = randomUUID()
+          requestEntry.createdAt = new Date().toISOString()
+          data.hostelMaintenance.unshift(requestEntry)
+          return requestEntry
+        })
+        return json(response, 201, { request: publicHostelMaintenance(created) })
+      }
+
+      const maintenanceRoute = resource === 'maintenance' && resourceId
+      if (maintenanceRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to update hostel maintenance requests.')
+        const input = await body(request)
+        if (!HOSTEL_MAINTENANCE_STATUSES.includes(input.status)) return reject(response, 400, 'Choose a valid maintenance request status.')
+        const updated = await store.transact((data) => {
+          data.hostelMaintenance ??= []
+          const entry = data.hostelMaintenance.find((candidate) => candidate.id === safeDecodeURIComponent(resourceId))
+          if (!entry) throw Object.assign(new Error('Hostel maintenance request not found.'), { status: 404 })
+          entry.status = input.status
+          entry.updatedAt = new Date().toISOString()
+          return entry
+        })
+        return json(response, 200, { request: publicHostelMaintenance(updated) })
+      }
+
+      return reject(response, 404, 'Hostel service route not found.')
+    }
 
     const campusRoute = pathname.match(/^\/api\/campus\/([^/]+)(?:\/([^/]+))?$/)
     if (campusRoute) {
@@ -2263,6 +2457,165 @@ function campusRecords(data, collection) {
   data.campus ??= {}
   data.campus[collection] ??= structuredClone(DEFAULT_CAMPUS_DATA[collection] ?? [])
   return data.campus[collection]
+}
+
+function validateHostelRoom(input) {
+  if (hasHostelBedFields(input)) throw Object.assign(new Error('Bed and seat numbers are not part of hostel room records.'), { status: 400 })
+  const hostelName = safeText(input.hostelName, 100)
+  const block = safeText(input.block, 80)
+  const floor = safeText(input.floor, 40)
+  const roomNumber = safeText(input.roomNumber, 40)
+  const capacity = input.capacity
+  if (!hostelName || !block || !floor || !roomNumber || !Number.isInteger(capacity) || capacity < 1 || capacity > 20) {
+    throw Object.assign(new Error('Enter the hostel, block, floor, room number, and a capacity from 1 to 20.'), { status: 400 })
+  }
+  return { hostelName, block, floor, roomNumber, capacity }
+}
+
+function hasHostelBedFields(input) {
+  return Object.hasOwn(input || {}, 'bedNumber') || Object.hasOwn(input || {}, 'seatNumber')
+}
+
+function validateHostelDetails(input) {
+  if (hasHostelBedFields(input) || Object.hasOwn(input || {}, 'facilities')) {
+    throw Object.assign(new Error('Bed, seat, and facilities fields are not part of Hostel details.'), { status: 400 })
+  }
+  const hostelName = hostelText(input.hostelName, 2)
+  const roomNumber = hostelText(input.roomNumber, 40)
+  const floor = hostelText(input.floor, 40)
+  const roomType = hostelText(input.roomType, 20)
+  const roomCooling = hostelText(input.roomCooling, 20)
+  const roommateNamesInput = input.roommateNames === undefined ? [] : input.roommateNames
+  const wardenName = safeText(input.wardenName, 100)
+  const wardenContact = safeText(input.wardenContact, 40)
+  const additionalInformation = safeText(input.additionalInformation, 1000)
+  if (!HOSTEL_NAMES.includes(hostelName)) throw Object.assign(new Error('Choose a valid Hostel Name: B1, B2, B3, B4, G1, or G2.'), { status: 400 })
+  if (!roomNumber) throw Object.assign(new Error('Enter a valid Room Number.'), { status: 400 })
+  if (!floor) throw Object.assign(new Error('Enter a valid Floor.'), { status: 400 })
+  if (!HOSTEL_ROOM_TYPES.includes(roomType)) throw Object.assign(new Error('Choose a valid Room Type: Single, Double, Triple, 4 Sharing, or Shared.'), { status: 400 })
+  if (roomCooling && !HOSTEL_ROOM_COOLING_OPTIONS.includes(roomCooling)) {
+    throw Object.assign(new Error('Choose AC or Non-AC room cooling.'), { status: 400 })
+  }
+  if (!Array.isArray(roommateNamesInput) || roommateNamesInput.length > HOSTEL_ROOMMATE_LIMITS.Shared) {
+    throw Object.assign(new Error('Enter roommate names using the roommate list.'), { status: 400 })
+  }
+  const roommateNames = roommateNamesInput.map((name) => safeText(name, 100)).filter(Boolean)
+  if (roommateNames.length > HOSTEL_ROOMMATE_LIMITS[roomType]) {
+    throw Object.assign(new Error(`A ${roomType} room allows at most ${HOSTEL_ROOMMATE_LIMITS[roomType]} roommate names.`), { status: 400 })
+  }
+  if (wardenContact && !/^\+?[\d\s().-]{7,20}$/.test(wardenContact)) {
+    throw Object.assign(new Error('Enter a valid warden contact number.'), { status: 400 })
+  }
+  return { hostelName, roomNumber, floor, roomType, roomCooling, roommateNames, wardenName, wardenContact, additionalInformation }
+}
+
+function hostelText(value, maximum) {
+  if (typeof value === 'string') return value.trim().slice(0, maximum)
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value).slice(0, maximum)
+  return ''
+}
+
+function publicHostelDetails(details) {
+  return {
+    studentId: details.studentId,
+    hostelName: details.hostelName,
+    roomNumber: details.roomNumber,
+    floor: details.floor,
+    roomType: details.roomType,
+    roomCooling: details.roomCooling || '',
+    roommateNames: Array.isArray(details.roommateNames)
+      ? details.roommateNames.filter((name) => typeof name === 'string').map((name) => name.trim()).filter(Boolean)
+      : [],
+    wardenName: details.wardenName || '',
+    wardenContact: details.wardenContact || '',
+    additionalInformation: details.additionalInformation || '',
+    createdAt: details.createdAt,
+    updatedAt: details.updatedAt || details.createdAt,
+  }
+}
+
+function sameHostelRoom(left, right) {
+  return ['hostelName', 'block', 'floor', 'roomNumber']
+    .every((key) => left[key].toLocaleLowerCase() === right[key].toLocaleLowerCase())
+}
+
+function publicHostelRoom(room) {
+  return {
+    id: room.id,
+    hostelName: room.hostelName,
+    block: room.block,
+    floor: room.floor,
+    roomNumber: room.roomNumber,
+    capacity: room.capacity,
+    createdAt: room.createdAt,
+    ...(room.updatedAt ? { updatedAt: room.updatedAt } : {}),
+  }
+}
+
+function publicHostelAllotment(allotment) {
+  return {
+    id: allotment.id,
+    studentId: allotment.studentId,
+    roomId: allotment.roomId,
+    hostelName: allotment.hostelName,
+    block: allotment.block,
+    floor: allotment.floor,
+    roomNumber: allotment.roomNumber,
+    status: allotment.status,
+    createdAt: allotment.createdAt,
+    endedAt: allotment.endedAt || '',
+  }
+}
+
+function validateHostelMaintenance(input, user) {
+  const category = safeText(input.category, 40)
+  const description = safeText(input.description, 2000)
+  if (!HOSTEL_MAINTENANCE_CATEGORIES.includes(category) || description.length < 5) {
+    throw Object.assign(new Error('Choose a category and enter a description of at least 5 characters.'), { status: 400 })
+  }
+  return {
+    studentId: user.id,
+    category,
+    description,
+    status: 'SUBMITTED',
+  }
+}
+
+function publicHostelMaintenance(requestEntry) {
+  return {
+    id: requestEntry.id,
+    studentId: requestEntry.studentId,
+    category: requestEntry.category,
+    description: requestEntry.description,
+    status: requestEntry.status,
+    createdAt: requestEntry.createdAt,
+    ...(requestEntry.updatedAt ? { updatedAt: requestEntry.updatedAt } : {}),
+  }
+}
+
+function studentHostelView(data, user) {
+  const userAllotments = (data.hostelAllotments || [])
+    .filter((allotment) => allotment.studentId === user.id)
+    .map(publicHostelAllotment)
+  const currentAllotment = userAllotments.find((allotment) => allotment.status === 'ALLOTTED') || null
+  const roommates = currentAllotment
+    ? (data.hostelAllotments || [])
+      .filter((allotment) => allotment.roomId === currentAllotment.roomId && allotment.status === 'ALLOTTED' && allotment.studentId !== user.id)
+      .map((allotment) => (data.users || []).find((candidate) => candidate.id === allotment.studentId && candidate.role === ROLES.STUDENT && candidate.active)?.name)
+      .filter(Boolean)
+      .map((name) => ({ name }))
+    : []
+  return {
+    hostelDetails: (data.hostelDetails || []).find((entry) => entry.studentId === user.id)
+      ? publicHostelDetails(data.hostelDetails.find((entry) => entry.studentId === user.id))
+      : null,
+    currentAllotment,
+    allotments: userAllotments,
+    roommates,
+    maintenance: (data.hostelMaintenance || [])
+      .filter((requestEntry) => requestEntry.studentId === user.id)
+      .map(publicHostelMaintenance),
+  }
 }
 
 function validateComplaint(input, user) {

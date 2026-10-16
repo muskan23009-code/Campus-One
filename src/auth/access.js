@@ -35,6 +35,7 @@ export const LOGIN_ROLES = Object.freeze([
 export function canSeePage(user, page) {
   if (!user) return false
   if (page === 'library' || page === 'transport') return false
+  if (page === 'hostel') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
   if (page === 'sports-management') return [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role)
   if (user.role === APP_ROLES.CANTEEN) return page === 'canteen'
   if (user.role === APP_ROLES.ADMIN) {

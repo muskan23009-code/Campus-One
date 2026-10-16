@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { moduleDetails } from '../data/campusData'
 import { api } from '../api/client'
+import CampusAI from './CampusAI'
 
 const icons = { Activity, ArrowRight, Bell, Building2, CalendarDays, ChartNoAxesCombined, ContactRound, HeartPulse, Map, MapPin, Megaphone, MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles, Utensils }
 const MESS_MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Dinner']
@@ -20,7 +21,6 @@ function formatMealTime(value) {
 
 export default function ModuleView({ page, user, onAction }) {
   const [filter, setFilter] = useState('')
-  const [copilotQuestion, setCopilotQuestion] = useState('')
   const [liveRecords, setLiveRecords] = useState(null)
   const [messSettings, setMessSettings] = useState(null)
   const [complaintRecords, setComplaintRecords] = useState(null)
@@ -45,7 +45,7 @@ export default function ModuleView({ page, user, onAction }) {
     setLiveRecords(null)
     setMessSettings(null)
     setComplaintRecords(null)
-    const collections = { notices: 'notices', food: 'food', events: 'events', hostel: 'hostel', directory: 'directory', emergency: 'emergency' }
+    const collections = { notices: 'notices', food: 'food', events: 'events', directory: 'directory', emergency: 'emergency' }
     const request = page === 'complaints' ? api('/api/complaints') : page === 'food' ? Promise.all([api('/api/campus/food'), api('/api/mess'), user.role === 'Student' ? api('/api/food/orders') : Promise.resolve({ orders: [] })]) : collections[page] ? api(`/api/campus/${collections[page]}`) : page === 'sports' ? api('/api/sports') : null
     if (!request) { setLiveRecords(null); setComplaintRecords(null); setRecordsError(''); return () => { active = false } }
     setRecordsError('')
@@ -82,13 +82,11 @@ export default function ModuleView({ page, user, onAction }) {
     ? complaintRecords.map((record) => ({ ...record, details: `${record.status} · ${new Date(record.createdAt).toLocaleDateString()}${record.assignedTo ? ` · Assigned to ${record.assignedTo}` : ''}` }))
     : null
 
+  if (page === 'copilot') return <CampusAI user={user} onNavigate={onNavigate} />
+
   function runAction(label) {
     if (page === 'complaints' && label.toLowerCase().includes('request')) {
       onAction('Tell us what is on your mind')
-      return
-    }
-    if (page === 'copilot' && (label.startsWith('Ask about') || label.includes('Find a service') || label.includes('Explore campus'))) {
-      setCopilotQuestion(label)
       return
     }
     if (page === 'navigation') { onAction(`Directions to ${label.replace('Get directions', '').trim() || 'selected campus location'}`); return }
@@ -97,13 +95,11 @@ export default function ModuleView({ page, user, onAction }) {
   }
 
   return (
-    <div className={`module-page module-accent-${detail.accent} page-enter`}>
+    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'events' ? 'campus-events-page' : ''}`}>
       <div className="module-breadcrumb">YOUR CAMPUS <ChevronRight size={12} /> CAMPUS SERVICES</div>
       <section className="module-hero"><div className="module-title-area"><span className="module-icon"><Icon size={20} strokeWidth={1.8} /></span><span className="module-eyebrow">{detail.eyebrow}</span><h1>{detail.title}<span className="module-title-period">.</span></h1><p>{detail.description}</p></div>{page === 'complaints' && <button className="module-primary" onClick={() => onAction('Tell us what is on your mind')}><MessageCircle size={15} /> Make a request</button>}{page === 'copilot' && <span className="module-available"><span /> READY WHEN YOU ARE</span>}</section>
 
       <section className="module-stats">{detail.stats.map(([label, value], index) => <div className="module-stat" key={label}><span className="module-stat-icon"><StatIcon index={index} /></span><span><span>{label}</span><strong>{value}</strong></span>{index === 0 && <ArrowUpRight className="module-stat-trend" size={15} />}</div>)}</section>
-
-      {page === 'copilot' && <section className="copilot-chat"><div className="copilot-chat-heading"><span className="chat-spark"><Sparkles size={16} /></span><div><strong>What can I help you with?</strong><span>Ask away. Your campus copilot is listening.</span></div></div><form className="copilot-chat-form" onSubmit={(event) => { event.preventDefault(); if (copilotQuestion.trim()) runAction(copilotQuestion); else runAction('Ask about your campus') }}><input aria-label="Ask your campus copilot" placeholder="e.g. What’s happening on campus this week?" value={copilotQuestion} onChange={(event) => setCopilotQuestion(event.target.value)} /><button aria-label="Send message"><ArrowRight size={16} /></button></form><div className="chat-suggestions">{detail.suggestions.map((suggestion) => <button key={suggestion} onClick={() => setCopilotQuestion(suggestion)}>{suggestion}<ArrowUpRight size={12} /></button>)}</div><div className="copilot-privacy"><ShieldAlert size={12} /> Campus-trained assistance. Your conversations stay private.</div></section>}
 
       {page === 'navigation' && <section className="map-preview"><div className="map-canvas"><div className="map-roads road-one"/><div className="map-roads road-two"/><div className="map-roads road-three"/><div className="map-park park-one"/><div className="map-park park-two"/><span className="map-building building-one"><Building2 size={18}/><span>ACADEMIC BLOCK A</span></span><span className="map-building building-two"><Utensils size={16}/><span>NORTH MESS</span></span><span className="map-building building-three"><HeartPulse size={16}/><span>HEALTH CENTRE</span></span><span className="map-pin pin-current"><span /></span><span className="map-pin pin-destination"><MapPin size={14} /></span><span className="map-map-label">PURAN MURTI VIDYAPEETH · SONIPAT</span></div><div className="map-controls"><div><span>3 places</span><span>Across campus</span></div><button onClick={() => runAction('Plan a campus route')}><Map size={15} /> Plan a route</button></div></section>}
 

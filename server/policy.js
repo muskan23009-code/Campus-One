@@ -153,11 +153,12 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
   })))
 export function canAccess(user, moduleId) {
   if (moduleId === 'library' || moduleId === 'transport') return false
+  if (moduleId === 'hostel') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
   return modulesForUser(user).includes(moduleId)
 }
 
 export const MANAGEMENT_COLLECTIONS = Object.freeze([
-  'notices', 'food', 'events', 'hostel',
+  'notices', 'food', 'events',
   'directory', 'emergency',
 ])
 
@@ -182,10 +183,6 @@ export const DEFAULT_CAMPUS_DATA = Object.freeze({
   events: [
     { id: 'event-design', title: 'Design week · Opening night', description: 'Thursday · 5:00 pm · Main auditorium', active: true },
     { id: 'event-openmic', title: 'Open mic at the courtyard', description: 'Friday · 6:30 pm · Student courtyard', active: true },
-  ],
-  hostel: [
-    { id: 'hostel-maintenance', title: 'Room maintenance', description: 'Track a repair request or report an issue.', active: true },
-    { id: 'hostel-notices', title: 'Residence notices', description: 'Updates from your hostel community.', active: true },
   ],
   directory: [
     { id: 'directory-engineering', title: 'School of Engineering', description: 'Academic Block A · Mon–Fri, 9 am–4 pm', active: true },

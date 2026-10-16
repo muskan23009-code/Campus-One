@@ -116,7 +116,7 @@ export default function AdministrationUsers({ currentUser, requestId, onClearReq
 
   const selectedRequest = requests.find((request) => request.id === selectedRequestId)
 
-  return <div className="module-page page-enter management-page">
+  return <div className="module-page page-enter management-page administration-users-page">
     <div className="module-breadcrumb">CAMPUS <span>›</span> ADMINISTRATION</div>
     <section className="module-hero"><div className="module-title-area"><span className="module-icon"><UsersRound size={20}/></span><span className="module-eyebrow">CAMPUS ACCOUNTS · REQUESTS · ACCESS</span><h1>User management<span className="module-title-period">.</span></h1><p>Review access requests and manage approved campus accounts. Applicants create their own passwords.</p></div><span className="management-admin-chip"><ShieldCheck size={13}/> Administration</span></section>
     <section className="category-count-grid">{CATEGORIES.map((role) => <button className={`category-count ${roleFilter === role ? 'category-count-active' : ''}`} key={role} onClick={() => { setRoleFilter(roleFilter === role ? '' : role); setView('accounts') }}><span>{roleLabel(role)}</span><strong>{counts[role] || 0}</strong><small>{(counts[role] || 0) === 1 ? 'account' : 'accounts'}</small></button>)}</section>

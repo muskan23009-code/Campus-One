@@ -33,6 +33,16 @@ test('student routes exclude every management page', () => {
   }
 })
 
+test('Hostel is limited to Students and Administration across routes and APIs', () => {
+  const eligibleRoles = [APP_ROLES.STUDENT, APP_ROLES.ADMIN]
+  for (const role of Object.values(APP_ROLES)) {
+    const user = { id: 'test-user', name: 'Test User', role, modules: ['hostel'] }
+    const expected = eligibleRoles.includes(role)
+    assert.equal(canSeePage(user, 'hostel'), expected, `${role} route access`)
+    assert.equal(canAccessCampusModule(user, 'hostel'), expected, `${role} API access`)
+  }
+})
+
 test('Transport and Library routes, permissions, and campus collections are removed', () => {
   const removedModules = ['transport', 'library']
   const navigationItems = navigationGroups.flatMap((group) => group.items)
@@ -69,7 +79,7 @@ test('sports captain receives complaint management and sports tools but not admi
   assert.equal(canSeePage(captain, 'sports'), true)
   assert.equal(canSeePage(captain, 'complaints'), true)
   assert.equal(canSeePage(captain, 'lost-found'), true)
-  for (const page of ['canteen', 'copilot', 'hostel', 'directory', 'emergency']) {
+  for (const page of ['canteen', 'copilot', 'directory', 'emergency']) {
     assert.equal(canSeePage(captain, page), true, `Sports Captain should have student access to ${page}`)
   }
   for (const page of ['users', 'analytics', 'campus-management']) {

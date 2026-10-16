@@ -132,12 +132,12 @@ export const moduleDetails = {
     rows: [['Design week · Opening night', 'Thursday, Oct 8 · 5:00 pm · Main auditorium', 'Explore event'], ['Open mic at the courtyard', 'Friday, Oct 9 · 6:30 pm · Student courtyard', 'Save a place'], ['Photography club walk', 'Saturday, Oct 10 · 7:00 am · Main gate', 'Join the group']],
   },
   hostel: {
-    eyebrow: 'MADE FOR YOUR EVERYDAY',
+    eyebrow: 'YOUR CAMPUS ACCOMMODATION',
     title: 'Hostel life',
-    description: 'Requests, notices, visits and essentials for life at your residence.',
+    description: 'View your room and allotment, find relevant roommate information, and request maintenance.',
     icon: 'Building2', accent: 'blue',
-    stats: [['Your room', 'B-204 · North residence'], ['1 open', 'Maintenance requests'], ['Quiet hours', '10:00 pm onwards']],
-    rows: [['Room maintenance', 'Track your repair request or report a new issue.', 'View requests'], ['Hostel visitor registration', 'Register an upcoming guest visit with the warden.', 'Register visitor'], ['Residence notices', 'The latest updates from your hostel community.', 'Read updates']],
+    stats: [],
+    rows: [['My Room', 'View your hostel, block, floor, room number, and roommates.', 'View room'], ['Hostel allotment', 'View your current hostel room and allotment history.', 'View allotment'], ['Maintenance', 'Submit a room maintenance request and track its status.', 'View requests']],
   },
   'lost-found': {
     eyebrow: 'FOUND SOMETHING? LOOKING FOR IT?',

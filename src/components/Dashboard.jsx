@@ -1,47 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Check,
+  ArrowDownRight, ArrowRight, CalendarDays, Check,
   ChevronRight, Clock3, Flame, GraduationCap,
   HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils,
 } from 'lucide-react'
 import { campusPlaces, notices } from '../data/campusData'
-import { api } from '../api/client'
 
 const day = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
 
 export default function Dashboard({ user, onNavigate, onAction, adminView }) {
-  const [selectedMeal, setSelectedMeal] = useState('Lunch')
-  const [selectedItem, setSelectedItem] = useState('Dal makhani & jeera rice')
   const [prompt, setPrompt] = useState('')
-  const [currentOrder, setCurrentOrder] = useState(null)
-  const [orderBusy, setOrderBusy] = useState(false)
-  const mealMenus = {
-    Breakfast: [['Idli with sambhar', 'South Indian · Vegetarian'], ['Aloo paratha', 'North Indian · Vegetarian'], ['Masala omelette', 'Protein-rich · Contains egg']],
-    Lunch: [['Dal makhani & jeera rice', 'North Indian · Vegetarian'], ['Paneer tikka wrap', 'Chef’s special · Vegetarian'], ['Seasonal fruit bowl', 'Fresh today · Vegan']],
-    Dinner: [['Matar paneer & roti', 'North Indian · Vegetarian'], ['Veg noodles', 'Indo-Chinese · Vegetarian'], ['Kadhi chawal', 'Home-style · Vegetarian']],
-  }
-
-  useEffect(() => {
-    let active = true
-    if (user.role !== 'Student') return () => { active = false }
-    if (user.role === 'Student') api('/api/food/orders').then((result) => {
-      if (active && result.orders.length) setCurrentOrder(result.orders[0])
-    }).catch(() => {})
-    return () => { active = false }
-  }, [user.role])
-
-  async function preorder() {
-    if (currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing') {
-      onAction(`${currentOrder.orderNumber} is ${currentOrder.status.toLowerCase()}. Track it at Food & Dining.`)
-      return
-    }
-    setOrderBusy(true)
-    try {
-      const result = await api('/api/food/orders', { method: 'POST', body: { meal: selectedMeal, item: selectedItem } })
-      setCurrentOrder(result.order)
-      onAction(`Order ${result.order.orderNumber} placed. Its current status is Placed.`)
-    } catch (reason) { onAction(`Canteen pre-order failed: ${reason.message}`) } finally { setOrderBusy(false) }
-  }
 
   return (
     <div className="dashboard-content page-enter">
@@ -73,10 +41,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
         </div>
 
         <aside className="side-column">
-          <section className="meal-panel"><div className="meal-header"><div><span className="section-eyebrow">CANTEEN PRE-ORDER</span><h3>Quick canteen order</h3></div><span className="meal-icon"><Utensils size={17} /></span></div><div className="meal-tabs" role="tablist" aria-label="Meal time">{['Breakfast', 'Lunch', 'Dinner'].map((meal) => <button key={meal} role="tab" aria-selected={selectedMeal === meal} className={selectedMeal === meal ? 'meal-tab-active' : ''} onClick={() => { setSelectedMeal(meal); setSelectedItem(mealMenus[meal][0][0]) }}>{meal}</button>)}</div><div className="menu-list">{mealMenus[selectedMeal].map(([name, detail], index) => <button type="button" className={`menu-item ${selectedItem === name ? 'menu-item-selected' : ''}`} aria-pressed={selectedItem === name} key={name} onClick={() => setSelectedItem(name)}><span className={`menu-index ${index === 0 ? 'menu-index-featured' : ''}`}>{String(index + 1).padStart(2, '0')}</span><span className="menu-item-copy"><strong>{name}</strong><span>{detail}</span></span>{index === 0 && <span className="chef-pick">TODAY’S PICK</span>}</button>)}</div><div className="order-row"><div className="menu-service"><span className="service-dot" />{currentOrder ? `${currentOrder.orderNumber} · ${currentOrder.status}` : `Selected · ${selectedItem}`}</div><button className={`order-button ${orderBusy ? 'order-complete' : ''}`} disabled={orderBusy || user.role !== 'Student'} onClick={preorder}>{orderBusy ? 'Placing…' : currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing' ? <>Track order <ArrowRight size={13}/></> : <>Pre-order <ArrowRight size={13} /></>}</button></div></section>
-
-          <button className="event-panel" onClick={() => onNavigate('events')}><div className="event-image" /><div className="event-info"><span className="event-label"><CalendarDays size={12} /> COMING UP ON CAMPUS</span><strong>Ideas look better<br />when shared.</strong><span className="event-name">Design week · Opening night</span><span className="event-time">THU, OCT 8 <i /> 5:00 PM <i /> MAIN AUDITORIUM</span></div><span className="event-arrow"><ArrowUpRight size={15} /></span></button>
-
           <button className="feedback-panel lost-found-dashboard-link" onClick={() => onNavigate('lost-found')}><span className="feedback-icon"><PackageSearch size={18} /></span><span className="feedback-text"><strong>Lost & Found</strong><span>Report or search for a campus item.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
           <button className="feedback-panel" onClick={() => onNavigate('complaints')}><span className="feedback-icon"><MessageSquareWarning size={18} /></span><span className="feedback-text"><strong>Complaint & Issue Tracker</strong><span>Submit an issue and track updates.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
 

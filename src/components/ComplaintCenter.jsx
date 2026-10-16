@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, ClipboardList, Clock3, ImagePlus, MessageCircle, Plus, Send, ShieldAlert, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ClipboardList, Clock3, Headset, ImagePlus, MessageCircle, Plus, Send, ShieldAlert, X } from 'lucide-react'
 import { api } from '../api/client'
 
 const CATEGORIES = [
@@ -196,7 +196,7 @@ export default function ComplaintCenter({ user, initialComplaintId = '', initial
   return <div className="module-page page-enter complaint-center">
     <div className="module-breadcrumb">CAMPUS <span>›</span> SUPPORT & ISSUE TRACKING</div>
     <section className="module-hero complaint-hero">
-      <div className="module-title-area"><span className="module-icon"><MessageCircle size={20}/></span><span className="module-eyebrow">A BETTER CAMPUS STARTS WITH YOUR VOICE</span><h1>Complaint & Issue Tracker<span className="module-title-period">.</span></h1><p>Submit an issue, follow its progress, and see official updates from campus teams.</p></div>
+      <div className="module-title-area"><span className="module-icon"><Headset size={20}/></span><span className="module-eyebrow">CAMPUS HELP DESK · STUDENT SUPPORT</span><h1>Complaint & Issue Tracker<span className="module-title-period">.</span></h1><p>Tell us what needs attention. We’ll help you track every update from campus teams.</p></div>
       {!selected && <button className="module-primary" onClick={() => { setFormOpen((open) => !open); setConfirmation(''); setError('') }}><Plus size={15}/>{formOpen ? 'Close form' : 'New Complaint'}</button>}
     </section>
 
@@ -207,9 +207,9 @@ export default function ComplaintCenter({ user, initialComplaintId = '', initial
       <div className="management-heading"><div><span className="section-eyebrow">LINKED TO YOUR CAMPUS ACCOUNT</span><h2>Report a campus issue</h2></div><span className="complaint-private"><ShieldAlert size={14}/> Not anonymous</span></div>
       <p>Your official ID and department are attached automatically: <strong>{user.id}</strong> · {user.role}{user.department ? ` · ${user.department}` : ''}</p>
       <form className="complaint-form" onSubmit={submitComplaint}>
-        <label>CATEGORY<select value={category} onChange={(event) => setCategory(event.target.value)} required>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>TITLE<input value={title} onChange={(event) => setTitle(event.target.value)} minLength={3} maxLength={120} placeholder="Briefly describe the issue" required/></label>
-        <label>DESCRIPTION<textarea value={description} onChange={(event) => setDescription(event.target.value)} minLength={10} maxLength={5000} rows={5} placeholder="Share the details needed to investigate this issue" required/></label>
+        <label><span className="service-field-label">CATEGORY <small>Required</small></span><select value={category} onChange={(event) => setCategory(event.target.value)} required>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label><span className="service-field-label">TITLE <small>Required</small></span><input value={title} onChange={(event) => setTitle(event.target.value)} minLength={3} maxLength={120} placeholder="Briefly describe the issue" required/></label>
+        <label><span className="service-field-label">DESCRIPTION <small>Required</small></span><textarea value={description} onChange={(event) => setDescription(event.target.value)} minLength={10} maxLength={5000} rows={5} placeholder="Share the details needed to investigate this issue" required/></label>
         <label className="complaint-upload">PHOTO (OPTIONAL)<span><ImagePlus size={16}/> Choose an image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={selectPhoto}/></span><small>PNG, JPEG or WebP · maximum 1 MB</small></label>
         {preview && <div className="complaint-preview"><img src={preview} alt="Complaint attachment preview"/><button type="button" onClick={() => setPhoto(null)} aria-label="Remove photo"><X size={14}/></button></div>}
         <div className="complaint-form-actions"><button type="button" className="modal-cancel" onClick={() => setFormOpen(false)}>Cancel</button><button className="module-primary" disabled={saving}>{saving ? 'Submitting…' : 'Submit Complaint'} <ArrowRight size={14}/></button></div>
@@ -236,11 +236,11 @@ export default function ComplaintCenter({ user, initialComplaintId = '', initial
         {user.role === 'Administration' && <><label>Department<select value={filters.department} onChange={(event) => setFilters((current) => ({ ...current, department: event.target.value }))}><option value="">All departments</option>{['Computer Science', 'Civil Engineering', 'Mechanical Engineering', 'Electrical Engineering', 'Business Administration', 'Pharmacy'].map((item) => <option key={item}>{item}</option>)}</select></label><label>Submitter role<select value={filters.role} onChange={(event) => setFilters((current) => ({ ...current, role: event.target.value }))}><option value="">All roles</option>{['Student', 'Staff', 'HOD', 'Sports Captain', 'Administration'].map((item) => <option key={item}>{item}</option>)}</select></label></>}
       </section>}
       <section className="complaint-list-section"><div className="management-heading"><div><span className="section-eyebrow">{isManager ? 'AUTHORIZED COMPLAINT QUEUE' : 'PRIVATE TO YOUR ACCOUNT'}</span><h2>My Complaints</h2></div><span className="results-count">{complaints.length} {complaints.length === 1 ? 'complaint' : 'complaints'}</span></div>
-        {loading ? <div className="management-state"><span className="loading-spinner"/>Loading complaints…</div> : complaints.length ? <div className="complaint-card-list">{complaints.map((complaint) => <article className="complaint-card" key={complaint.id}>
+        {loading ? <div className="management-state"><span className="loading-spinner"/>Loading complaints…</div> : complaints.length ? <div className="complaint-card-list">{complaints.map((complaint) => <article className={`complaint-card complaint-card-${complaint.status.toLowerCase().replaceAll('_', '-')}`} key={complaint.id}>
           {complaint.photoUrl && <img className="complaint-card-photo" src={complaint.photoUrl} alt="Complaint attachment"/>}
-          <div className="complaint-card-main"><span className="section-eyebrow">{complaint.id} · {complaint.category}</span><h3>{complaint.title}</h3><p>{complaint.description}</p><span className="complaint-card-meta">{complaint.submitterId} · {new Date(complaint.createdAt).toLocaleString()} · Updated {new Date(complaint.lastUpdatedAt).toLocaleString()}</span></div>
+          <div className="complaint-card-main"><div className="service-card-kicker"><span className="section-eyebrow">{complaint.id}</span><span className="service-category-chip">{complaint.category}</span></div><h3>{complaint.title}</h3><p>{complaint.description}</p><span className="complaint-card-meta">{complaint.submitterId} · {new Date(complaint.createdAt).toLocaleString()} · Updated {new Date(complaint.lastUpdatedAt).toLocaleString()}</span></div>
           <div className="complaint-card-actions"><StatusBadge status={complaint.status}/><button className="complaint-view-button" onClick={() => setSelectedId(complaint.id)}>View Details <ArrowRight size={13}/></button></div>
-        </article>)}</div> : <div className="management-state">{isManager ? 'There are no complaints in your authorized scope.' : 'You have not submitted a complaint yet.'}</div>}
+        </article>)}</div> : <div className="management-state complaint-empty-state"><ClipboardList size={25}/><span>{isManager ? 'There are no complaints in your authorized scope.' : 'You have not submitted a complaint yet.'}</span></div>}
       </section>
     </>}
     <footer className="dashboard-footer"><span><span className="footer-status-dot"/>Updates are recorded in your campus activity history</span><span>Campus One · Complaint tracking</span></footer>
