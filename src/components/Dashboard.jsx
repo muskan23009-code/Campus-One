@@ -18,6 +18,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
   const [messEstimate, setMessEstimate] = useState(null)
   const [weather, setWeather] = useState(null)
   const [weatherStatus, setWeatherStatus] = useState('loading')
+  const [weatherRetry, setWeatherRetry] = useState(0)
   const mealMenus = {
     Breakfast: [['Idli with sambhar', 'South Indian · Vegetarian'], ['Aloo paratha', 'North Indian · Vegetarian'], ['Masala omelette', 'Protein-rich · Contains egg']],
     Lunch: [['Dal makhani & jeera rice', 'North Indian · Vegetarian'], ['Paneer tikka wrap', 'Chef’s special · Vegetarian'], ['Seasonal fruit bowl', 'Fresh today · Vegan']],
@@ -57,10 +58,11 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
         }
         setWeather({ temperature, code })
         setWeatherStatus('ready')
-      } catch {
+      } catch (reason) {
         if (active && !requestController.signal.aborted) {
           setWeather(null)
           setWeatherStatus('error')
+          if (import.meta.env.DEV) console.warn('[weather] Could not load Sonipat weather:', reason.message, reason.status ? `(HTTP ${reason.status})` : '')
         }
       }
     }
@@ -72,7 +74,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
       window.clearInterval(interval)
       controller?.abort()
     }
-  }, [])
+  }, [weatherRetry])
 
   async function preorder() {
     if (currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing') {
@@ -117,14 +119,14 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
     : weatherStatus === 'loading'
       ? { temperature: '--°', condition: 'Loading…', message: 'Checking weather' }
       : weatherStatus === 'missing'
-        ? { temperature: '--°', condition: 'No data', message: 'Not available' }
-        : { temperature: '--°', condition: 'No weather', message: 'Try again later' }
+        ? { temperature: '--°', condition: 'No weather data', message: 'Tap to retry' }
+        : { temperature: '--°', condition: 'Weather unavailable', message: 'Tap to retry' }
 
   return (
     <div className="dashboard-content page-enter">
       <div className="welcome-row">
         <div><p className="date-line"><span className="date-dot" />{day}<span className="date-divider">·</span><span>Sonipat, Haryana</span></p><h1>{adminView ? 'Campus, at a glance.' : user.role === 'Staff' ? `Good morning, ${user.name.split(' ')[0]}.` : user.role === 'HOD' ? `Your department, ${user.department}.` : user.role === 'Sports Captain' ? 'Your campus, in play.' : 'A good day to make yours.'}</h1><p className="welcome-description">{adminView ? 'Your operations, people and priorities, all in one place.' : user.role === 'Staff' ? 'Your campus services and assigned student requests, all in sync.' : user.role === 'HOD' ? 'Review department registrations and keep your student list in view.' : user.role === 'Sports Captain' ? 'Teams, wellness and campus sport, ready for the day.' : 'Everything happening at Puran Murti Vidyapeeth, thoughtfully in sync.'}</p></div>
-        <button className="weather-chip" onClick={() => onAction('Campus weather')} aria-label={`Sonipat weather: ${weatherDisplay.temperature} Celsius, ${weatherDisplay.condition}. ${weatherDisplay.message}`}><span className="weather-sun"><Flame size={17} /></span><span aria-live="polite"><strong>{weatherDisplay.temperature} <span>°C</span></strong><small>{weatherDisplay.condition}</small></span><span className="weather-divider" /><span><strong>{weatherDisplay.message}</strong><small>Sonipat, Haryana</small></span></button>
+        <button className="weather-chip" disabled={weatherStatus === 'loading'} onClick={() => weatherStatus === 'ready' ? onAction('Campus weather') : setWeatherRetry((retry) => retry + 1)} aria-label={weatherStatus === 'ready' ? `Sonipat weather: ${weatherDisplay.temperature} Celsius, ${weatherDisplay.condition}. ${weatherDisplay.message}` : `Sonipat weather unavailable. ${weatherDisplay.message}`}><span className="weather-sun"><Flame size={17} /></span><span aria-live="polite"><strong>{weatherDisplay.temperature} <span>°C</span></strong><small>{weatherDisplay.condition}</small></span><span className="weather-divider" /><span><strong>{weatherDisplay.message}</strong><small>Sonipat, Haryana</small></span></button>
       </div>
 
       <section className="hero-banner" aria-label="Campus welcome">

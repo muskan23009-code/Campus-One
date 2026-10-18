@@ -396,17 +396,23 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       let weatherResponse
       try {
         weatherResponse = await fetch(weatherUrl, { signal: AbortSignal.timeout(10_000) })
-      } catch {
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') console.warn('[weather] Open-Meteo request failed:', error.message)
         throw Object.assign(new Error('Current weather is temporarily unavailable.'), { status: 502 })
       }
-      if (!weatherResponse.ok) return reject(response, 502, 'Current weather is temporarily unavailable.')
+      if (!weatherResponse.ok) {
+        if (process.env.NODE_ENV !== 'production') console.warn(`[weather] Open-Meteo returned HTTP ${weatherResponse.status}.`)
+        return reject(response, 502, 'Current weather is temporarily unavailable.')
+      }
       let weatherData
       try { weatherData = await weatherResponse.json() } catch {
+        if (process.env.NODE_ENV !== 'production') console.warn('[weather] Open-Meteo returned invalid JSON.')
         return reject(response, 502, 'Current weather data could not be read.')
       }
       const temperatureC = weatherData?.current?.temperature_2m
       const weatherCode = weatherData?.current?.weather_code
       if (!Number.isFinite(temperatureC) || !Number.isInteger(weatherCode)) {
+        if (process.env.NODE_ENV !== 'production') console.warn('[weather] Open-Meteo response is missing numeric current.temperature_2m or current.weather_code fields.')
         return reject(response, 502, 'Current weather data is unavailable.')
       }
       return json(response, 200, { current: { temperatureC, weatherCode } })

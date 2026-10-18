@@ -57,7 +57,7 @@ test('the weather API requests Sonipat current conditions and reports unavailabl
   assert.equal(weatherUrl.searchParams.get('current'), 'temperature_2m,weather_code')
   assert.equal(weatherUrl.searchParams.get('temperature_unit'), 'celsius')
 
-  upstreamResponse = { ok: false }
+  upstreamResponse = { ok: false, status: 503 }
   result = await requestWeather()
   assert.equal(result.status, 502)
   assert.match(result.body.error, /temporarily unavailable/)
@@ -66,4 +66,9 @@ test('the weather API requests Sonipat current conditions and reports unavailabl
   result = await requestWeather()
   assert.equal(result.status, 502)
   assert.match(result.body.error, /weather data is unavailable/)
+
+  upstreamResponse = { ok: true, json: async () => { throw new SyntaxError('Invalid JSON') } }
+  result = await requestWeather()
+  assert.equal(result.status, 502)
+  assert.match(result.body.error, /could not be read/)
 })
