@@ -16,6 +16,8 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
   const [currentOrder, setCurrentOrder] = useState(null)
   const [orderBusy, setOrderBusy] = useState(false)
   const [messEstimate, setMessEstimate] = useState(null)
+  const [weather, setWeather] = useState(null)
+  const [weatherStatus, setWeatherStatus] = useState('loading')
   const mealMenus = {
     Breakfast: [['Idli with sambhar', 'South Indian · Vegetarian'], ['Aloo paratha', 'North Indian · Vegetarian'], ['Masala omelette', 'Protein-rich · Contains egg']],
     Lunch: [['Dal makhani & jeera rice', 'North Indian · Vegetarian'], ['Paneer tikka wrap', 'Chef’s special · Vegetarian'], ['Seasonal fruit bowl', 'Fresh today · Vegan']],
@@ -34,6 +36,44 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
     return () => { active = false }
   }, [user.role])
 
+  useEffect(() => {
+    let active = true
+    let controller
+
+    async function refreshWeather() {
+      controller?.abort()
+      const requestController = new AbortController()
+      controller = requestController
+      setWeatherStatus('loading')
+      try {
+        const result = await api('/api/weather', { signal: requestController.signal })
+        if (!active || requestController.signal.aborted) return
+        const temperature = result?.current?.temperatureC
+        const code = result?.current?.weatherCode
+        if (!Number.isFinite(temperature) || !Number.isInteger(code)) {
+          setWeather(null)
+          setWeatherStatus('missing')
+          return
+        }
+        setWeather({ temperature, code })
+        setWeatherStatus('ready')
+      } catch {
+        if (active && !requestController.signal.aborted) {
+          setWeather(null)
+          setWeatherStatus('error')
+        }
+      }
+    }
+
+    refreshWeather()
+    const interval = window.setInterval(refreshWeather, 30 * 60 * 1000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      controller?.abort()
+    }
+  }, [])
+
   async function preorder() {
     if (currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing') {
       onAction(`${currentOrder.orderNumber} is ${currentOrder.status.toLowerCase()}. Track it at Food & Dining.`)
@@ -47,11 +87,44 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
     } catch (reason) { onAction(`Canteen pre-order failed: ${reason.message}`) } finally { setOrderBusy(false) }
   }
 
+  function weatherCondition(code) {
+    if (code === 0) return 'Clear'
+    if (code === 1) return 'Mostly clear'
+    if (code === 2) return 'Partly cloudy'
+    if (code === 3) return 'Cloudy'
+    if (code === 45 || code === 48) return 'Foggy'
+    if ([51, 53, 55, 56, 57].includes(code)) return 'Drizzle'
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'Rain'
+    if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Snow'
+    if ([95, 96, 99].includes(code)) return 'Thunderstorm'
+    return 'Conditions unavailable'
+  }
+
+  function weatherMessage(code, temperature) {
+    if ([95, 96, 99].includes(code)) return 'Stay indoors'
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'Take umbrella'
+    if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Keep warm'
+    if (code === 45 || code === 48) return 'Mind the fog'
+    if (temperature >= 35) return 'Stay hydrated'
+    if (temperature <= 10) return 'Keep warm'
+    if (code === 0 || code === 1) return 'Nice outdoors'
+    if (temperature >= 18 && temperature <= 30) return 'Mild on campus'
+    return temperature > 30 ? 'Warm on campus' : 'Cool on campus'
+  }
+
+  const weatherDisplay = weatherStatus === 'ready'
+    ? { temperature: `${Math.round(weather.temperature)}°`, condition: weatherCondition(weather.code), message: weatherMessage(weather.code, weather.temperature) }
+    : weatherStatus === 'loading'
+      ? { temperature: '--°', condition: 'Loading…', message: 'Checking weather' }
+      : weatherStatus === 'missing'
+        ? { temperature: '--°', condition: 'No data', message: 'Not available' }
+        : { temperature: '--°', condition: 'No weather', message: 'Try again later' }
+
   return (
     <div className="dashboard-content page-enter">
       <div className="welcome-row">
         <div><p className="date-line"><span className="date-dot" />{day}<span className="date-divider">·</span><span>Sonipat, Haryana</span></p><h1>{adminView ? 'Campus, at a glance.' : user.role === 'Staff' ? `Good morning, ${user.name.split(' ')[0]}.` : user.role === 'HOD' ? `Your department, ${user.department}.` : user.role === 'Sports Captain' ? 'Your campus, in play.' : 'A good day to make yours.'}</h1><p className="welcome-description">{adminView ? 'Your operations, people and priorities, all in one place.' : user.role === 'Staff' ? 'Your campus services and assigned student requests, all in sync.' : user.role === 'HOD' ? 'Review department registrations and keep your student list in view.' : user.role === 'Sports Captain' ? 'Teams, wellness and campus sport, ready for the day.' : 'Everything happening at Puran Murti Vidyapeeth, thoughtfully in sync.'}</p></div>
-        <button className="weather-chip" onClick={() => onAction('Campus weather')}><span className="weather-sun"><Flame size={17} /></span><span><strong>28° <span>°C</span></strong><small>Clear skies</small></span><span className="weather-divider" /><span><strong>Good day</strong><small>to be outside</small></span></button>
+        <button className="weather-chip" onClick={() => onAction('Campus weather')} aria-label={`Sonipat weather: ${weatherDisplay.temperature} Celsius, ${weatherDisplay.condition}. ${weatherDisplay.message}`}><span className="weather-sun"><Flame size={17} /></span><span aria-live="polite"><strong>{weatherDisplay.temperature} <span>°C</span></strong><small>{weatherDisplay.condition}</small></span><span className="weather-divider" /><span><strong>{weatherDisplay.message}</strong><small>Sonipat, Haryana</small></span></button>
       </div>
 
       <section className="hero-banner" aria-label="Campus welcome">

@@ -391,6 +391,27 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
   async function handleApi(request, response, pathname, searchParams) {
     if (request.method !== 'GET' && !sameOrigin(request)) return reject(response, 403, 'This request origin is not allowed.')
 
+    if (pathname === '/api/weather' && request.method === 'GET') {
+      const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=28.9931&longitude=77.0151&current=temperature_2m,weather_code&temperature_unit=celsius&timezone=Asia%2FKolkata'
+      let weatherResponse
+      try {
+        weatherResponse = await fetch(weatherUrl, { signal: AbortSignal.timeout(10_000) })
+      } catch {
+        throw Object.assign(new Error('Current weather is temporarily unavailable.'), { status: 502 })
+      }
+      if (!weatherResponse.ok) return reject(response, 502, 'Current weather is temporarily unavailable.')
+      let weatherData
+      try { weatherData = await weatherResponse.json() } catch {
+        return reject(response, 502, 'Current weather data could not be read.')
+      }
+      const temperatureC = weatherData?.current?.temperature_2m
+      const weatherCode = weatherData?.current?.weather_code
+      if (!Number.isFinite(temperatureC) || !Number.isInteger(weatherCode)) {
+        return reject(response, 502, 'Current weather data is unavailable.')
+      }
+      return json(response, 200, { current: { temperatureC, weatherCode } })
+    }
+
     if (pathname === '/api/auth/bootstrap-status' && request.method === 'GET') {
       const data = await store.read()
       return json(response, 200, {
