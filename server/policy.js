@@ -1,3 +1,5 @@
+import { SPORTS_DEPARTMENTS } from '../shared/sports-time.js'
+
 export const ROLES = Object.freeze({
   STUDENT: 'Student',
   STAFF: 'Staff',
@@ -20,19 +22,19 @@ export const USER_ID_FORMATS = Object.freeze({
 
 export const STUDENT_MODULES = Object.freeze([
   'overview', 'copilot', 'notices', 'food', 'canteen', 'navigation', 'directory',
-  'complaints', 'sports', 'events', 'library', 'hostel', 'transport',
+  'complaints', 'sports', 'events', 'hostel',
   'lost-found', 'emergency',
 ])
 
 export const STAFF_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'events', 'library', 'hostel', 'canteen',
-  'transport', 'directory', 'food', 'lost-found', 'emergency', 'sports',
+  'overview', 'notices', 'complaints', 'events', 'hostel', 'canteen',
+  'directory', 'food', 'lost-found', 'emergency', 'sports',
 ])
 
 export const CANTEEN_STAFF_MODULES = Object.freeze(['canteen'])
 
 export const HOD_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports',
+  'overview', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports', 'events',
 ])
 
 export const ALL_MODULES = Object.freeze([
@@ -152,6 +154,7 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
     diet, category, name, price, size: size || '', available: true, description: '',
   })))
 export function canAccess(user, moduleId) {
+  if (moduleId === 'library' || moduleId === 'transport') return false
   return modulesForUser(user).includes(moduleId)
 }
 
@@ -160,9 +163,11 @@ export const MANAGEMENT_COLLECTIONS = Object.freeze([
   'directory', 'emergency',
 ])
 
-export const DEPARTMENTS = Object.freeze([
+export const DEPARTMENTS = SPORTS_DEPARTMENTS
+
+export const LEGACY_DEPARTMENTS = Object.freeze([
   'Computer Science', 'Civil Engineering', 'Mechanical Engineering',
-  'Electrical Engineering', 'Business Administration', 'Pharmacy',
+  'Electrical Engineering', 'Business Administration',
 ])
 
 export const DEFAULT_CAMPUS_DATA = Object.freeze({

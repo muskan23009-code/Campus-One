@@ -5,8 +5,8 @@ import { STAFF_DEFAULT_MODULES } from '../auth/access'
 
 const SECTIONS = [
   ['food', 'Food & dining'], ['events', 'Events & clubs'],
-  ['library', 'Library'], ['hostel', 'Hostel'], ['transport', 'Transport'],
-  ['directory', 'Campus database'], ['emergency', 'Emergency contacts'],
+  ['hostel', 'Hostel'], ['directory', 'Campus database'],
+  ['emergency', 'Emergency contacts'],
 ]
 
 export default function CampusManagement({ onNotify }) {

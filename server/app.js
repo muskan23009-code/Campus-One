@@ -7,11 +7,18 @@ import {
   verifySession,
 } from './auth.js'
 import {
-  CANTEEN_CATEGORIES, CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_SPORTS_DATA, DEPARTMENTS,
+  CANTEEN_CATEGORIES, CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_SPORTS_DATA, DEPARTMENTS, LEGACY_DEPARTMENTS,
   INITIAL_CANTEEN_MENU,
   MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, STAFF_MODULES,
   STUDENT_MODULES, USER_ID_FORMATS, canAccess, modulesForUser,
 } from './policy.js'
+import {
+  ALL_DEPARTMENTS, SPORTS_DEPARTMENTS, SPORTS_EVENT_CAPACITY_STATUSES, SPORTS_EVENT_PUBLISHED_STATUSES,
+  SPORTS_EVENT_REGISTRATION_STATUSES, SPORTS_EVENT_STATUSES, SPORTS_EVENT_VISIBLE_STATUSES,
+  SPORTS_EVENT_REGISTRATION_STATUS, SPORTS_EVENT_STATUS,
+  formatSportsTime, isNormalizedSportsTime, normalizeSportsDepartment,
+  normalizeSportsEventContract, normalizeSportsEventStatus, normalizeSportsTime,
+} from '../shared/sports-time.js'
 
 const BODY_LIMIT = 2_000_000
 const PHOTO_LIMIT = 1_400_000
@@ -145,13 +152,13 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const department = safeText(input.department, 100)
       const semester = safeText(input.semester, 40)
       const admissionYear = validYear(input.admissionYear, 'admission year')
-      if (!rollNumber || !course || !semester || !DEPARTMENTS.includes(department)) throw Object.assign(new Error('Complete your enrollment, course, department, and semester details.'), { status: 400 })
+      if (!rollNumber || !course || !semester || !validDepartment(department)) throw Object.assign(new Error('Complete your enrollment, course, department, and semester details.'), { status: 400 })
       Object.assign(fields, { dateOfBirth, rollNumber, course, department, semester, admissionYear })
     } else if ([ROLES.STAFF, ROLES.HOD].includes(input.role)) {
       const department = safeText(input.department, 100)
       const designation = safeText(input.designation, 100)
       const joiningYear = validYear(input.joiningYear, 'joining year')
-      if (!DEPARTMENTS.includes(department) || !designation) throw Object.assign(new Error('Choose your department and enter your designation.'), { status: 400 })
+      if (!validDepartment(department) || !designation) throw Object.assign(new Error('Choose your department and enter your designation.'), { status: 400 })
       Object.assign(fields, { department, designation, joiningYear })
     } else if (input.role === ROLES.CANTEEN) {
       fields.designation = 'Canteen Staff'
@@ -159,7 +166,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const department = safeText(input.department, 100)
       const sport = safeText(input.sport, 80)
       const teamCategory = safeText(input.teamCategory, 100)
-      if ((department && !DEPARTMENTS.includes(department)) || !sport || !teamCategory) throw Object.assign(new Error('Enter your sport and team or category, and choose a valid department if applicable.'), { status: 400 })
+      if ((department && !validDepartment(department)) || !sport || !teamCategory) throw Object.assign(new Error('Enter your sport and team or category, and choose a valid department if applicable.'), { status: 400 })
       Object.assign(fields, { department, sport, teamCategory })
     } else if (input.role === ROLES.ADMIN) {
       const designation = safeText(input.designation, 100)
@@ -267,7 +274,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
   function notifyApprovers(data, role, fields, application) {
     const recipients = role === ROLES.STUDENT
-      ? data.users.filter((candidate) => candidate.active && candidate.role === ROLES.HOD && candidate.department === fields.department)
+      ? data.users.filter((candidate) => candidate.active && candidate.role === ROLES.HOD && sameDepartment(candidate.department, fields.department))
       : role === ROLES.ADMIN ? [] : data.users.filter((candidate) => candidate.active && candidate.role === ROLES.ADMIN)
     if (!recipients.length) return
     const requestKind = role === ROLES.STUDENT ? 'Student Registration Request' : `${role} Access Request`
@@ -460,15 +467,15 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (user.role !== ROLES.HOD || !user.department) return reject(response, 403, 'Department HOD access is required.')
       const data = await store.read()
       if (hodQueue[1] === 'students' && request.method === 'GET' && !hodQueue[2]) {
-        const students = data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT && candidate.department === user.department)
+        const students = data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT && sameDepartment(candidate.department, user.department))
         return json(response, 200, { department: user.department, students: students.map((student) => publicUser(student)) })
       }
       if (hodQueue[1] === 'requests' && request.method === 'GET' && !hodQueue[2]) {
-        const requests = data.registrationRequests.filter((application) => application.role === ROLES.STUDENT && application.status === 'Pending' && application.fields.department === user.department)
+        const requests = data.registrationRequests.filter((application) => application.role === ROLES.STUDENT && application.status === 'Pending' && sameDepartment(application.fields.department, user.department))
         return json(response, 200, { department: user.department, requests: requests.map(publicRegistration) })
       }
       if (hodQueue[1] === 'requests' && hodQueue[2] && request.method === 'GET') {
-        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && candidate.fields.department === user.department)
+        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && sameDepartment(candidate.fields.department, user.department))
         if (!application) return reject(response, 404, 'This student request is not in your department.')
         return json(response, 200, { request: publicRegistration(application) })
       }
@@ -652,6 +659,259 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         return notification
       })
       return json(response, 200, { notification: publicNotification(updated) })
+    }
+
+    if (pathname.startsWith('/api/events-clubs')) {
+      if (!canAccess(user, 'events') || user.role === ROLES.CANTEEN) return reject(response, 403, 'Your role cannot access Events & Clubs.')
+      const manager = user.role === ROLES.ADMIN
+      const dataArrays = (data) => {
+        data.campusEvents ??= []
+        data.eventRegistrations ??= []
+        data.eventAttendance ??= []
+        data.eventResults ??= []
+        data.campusClubs ??= []
+        data.clubMemberships ??= []
+        data.clubAnnouncements ??= []
+        data.clubActivities ??= []
+      }
+      const eventRoute = pathname.match(/^\/api\/events-clubs\/events\/([^/]+)$/)
+      const registrationRoute = pathname.match(/^\/api\/events-clubs\/registrations\/([^/]+)$/)
+      const clubRoute = pathname.match(/^\/api\/events-clubs\/clubs\/([^/]+)$/)
+      const membershipRoute = pathname.match(/^\/api\/events-clubs\/memberships\/([^/]+)$/)
+
+      if (pathname === '/api/events-clubs' && request.method === 'GET') {
+        const data = await store.read()
+        dataArrays(data)
+        const events = data.campusEvents.filter((event) => manager
+          ? true
+          : event.status !== 'DRAFT' && (eligibleForCampusEvent(event, user) || data.eventRegistrations.some((entry) => entry.eventId === event.id && entry.userId === user.id)))
+        const clubs = data.campusClubs.filter((club) => manager || club.active)
+        const registrations = data.eventRegistrations.filter((entry) => manager || entry.userId === user.id)
+        const memberships = data.clubMemberships.filter((entry) => manager || entry.userId === user.id)
+        const myClubIds = new Set(memberships.filter((entry) => entry.status === 'ACTIVE').map((entry) => entry.clubId))
+        return json(response, 200, {
+          events: events.map((event) => ({ ...event, registrationCount: data.eventRegistrations.filter((entry) => entry.eventId === event.id && !['CANCELLED'].includes(entry.status)).length })),
+          registrations, clubs, memberships,
+          announcements: data.clubAnnouncements.filter((entry) => manager || myClubIds.has(entry.clubId)),
+          activities: data.clubActivities.filter((entry) => manager || myClubIds.has(entry.clubId) || entry.public === true),
+          attendance: manager ? data.eventAttendance : data.eventAttendance.filter((entry) => entry.userId === user.id),
+          results: manager ? data.eventResults : data.eventResults.filter((entry) => entry.userId === user.id),
+          analytics: manager ? {
+            totalEvents: data.campusEvents.length,
+            upcomingEvents: data.campusEvents.filter((entry) => ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'].includes(entry.status) && entry.date >= new Date().toISOString().slice(0, 10)).length,
+            totalRegistrations: data.eventRegistrations.filter((entry) => entry.status !== 'CANCELLED').length,
+            activeClubs: data.campusClubs.filter((entry) => entry.active).length,
+            pendingClubApplications: data.clubMemberships.filter((entry) => entry.status === 'PENDING').length,
+          } : null,
+        })
+      }
+
+      if (pathname === '/api/events-clubs/events' && request.method === 'POST') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Events & Clubs.')
+        const input = await body(request)
+        const event = validateCampusEvent(input)
+        const created = await store.transact((data) => {
+          dataArrays(data)
+          event.id = randomUUID()
+          event.createdAt = event.updatedAt = new Date().toISOString()
+          event.createdBy = user.id
+          data.campusEvents.unshift(event)
+          if (event.status !== 'DRAFT') notifyEventAudience(data, event, 'Event published', addNotification)
+          return event
+        })
+        return json(response, 201, { event: created })
+      }
+
+      if (eventRoute && request.method === 'PATCH') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Events & Clubs.')
+        const input = await body(request)
+        const updated = await store.transact((data) => {
+          dataArrays(data)
+          const event = data.campusEvents.find((entry) => entry.id === decodeURIComponent(eventRoute[1]))
+          if (!event) throw Object.assign(new Error('Event not found.'), { status: 404 })
+          const wasDraft = event.status === 'DRAFT'
+          const previousSchedule = `${event.date}|${event.startTime}|${event.endTime}|${event.venue}`
+          Object.assign(event, validateCampusEvent({ ...event, ...input }, { partial: true }), { updatedAt: new Date().toISOString() })
+          if (event.status === 'CANCELLED') {
+            for (const registration of data.eventRegistrations.filter((entry) => entry.eventId === event.id && entry.status !== 'CANCELLED')) {
+              addNotification(data, { recipientUserId: registration.userId, title: 'Event cancelled', message: `${event.name} has been cancelled.`, referenceId: event.id, target: 'events' })
+            }
+          } else if (wasDraft && event.status !== 'DRAFT') notifyEventAudience(data, event, 'Event published', addNotification)
+          else if (previousSchedule !== `${event.date}|${event.startTime}|${event.endTime}|${event.venue}`) {
+            for (const registration of data.eventRegistrations.filter((entry) => entry.eventId === event.id && entry.status !== 'CANCELLED')) {
+              addNotification(data, { recipientUserId: registration.userId, title: 'Event schedule changed', message: `${event.name} · ${event.date} · ${event.startTime}–${event.endTime} · ${event.venue}`, referenceId: event.id, target: 'events' })
+            }
+          }
+          return event
+        })
+        return json(response, 200, { event: updated })
+      }
+
+      const registerRoute = pathname.match(/^\/api\/events-clubs\/events\/([^/]+)\/register$/)
+      if (registerRoute && request.method === 'POST') {
+        const registration = await store.transact((data) => {
+          dataArrays(data)
+          const event = data.campusEvents.find((entry) => entry.id === decodeURIComponent(registerRoute[1]))
+          if (!event || !['PUBLISHED', 'REGISTRATION_OPEN'].includes(event.status)) throw Object.assign(new Error('This event is not open for registration.'), { status: 409 })
+          if (!eligibleForCampusEvent(event, user)) throw Object.assign(new Error('This event is limited to its eligible audience.'), { status: 403 })
+          if (event.date < new Date().toISOString().slice(0, 10)) throw Object.assign(new Error('Registration is closed because this event has passed.'), { status: 409 })
+          if (event.registrationDeadline && event.registrationDeadline < new Date().toISOString().slice(0, 10)) throw Object.assign(new Error('Registration is closed for this event.'), { status: 409 })
+          if (data.eventRegistrations.some((entry) => entry.eventId === event.id && entry.userId === user.id && entry.status !== 'CANCELLED')) throw Object.assign(new Error('You are already registered for this event.'), { status: 409 })
+          const count = data.eventRegistrations.filter((entry) => entry.eventId === event.id && entry.status !== 'CANCELLED').length
+          if (event.maxParticipants && count >= event.maxParticipants) throw Object.assign(new Error('Registration is full for this event.'), { status: 409 })
+          const now = new Date().toISOString()
+          const entry = {
+            id: randomUUID(), eventId: event.id, eventName: event.name, userId: user.id,
+            userName: user.name, role: user.role, department: user.department || '',
+            course: user.course || '', semester: user.semester || '',
+            registeredAt: now, status: 'REGISTERED',
+          }
+          data.eventRegistrations.unshift(entry)
+          addNotification(data, { recipientUserId: user.id, title: 'Event registration successful', message: `You are registered for ${event.name}.`, referenceId: event.id, target: 'events' })
+          return entry
+        })
+        return json(response, 201, { registration })
+      }
+
+      if (registrationRoute && request.method === 'PATCH') {
+        const input = await body(request)
+        if (['ATTENDED', 'ABSENT'].includes(input.status) && !manager) return reject(response, 403, 'Administration access is required to mark attendance.')
+        if (input.status !== 'CANCELLED' && !(manager && ['ATTENDED', 'ABSENT'].includes(input.status))) return reject(response, 400, 'Choose an allowed registration or attendance status.')
+        const updated = await store.transact((data) => {
+          dataArrays(data)
+          const entry = data.eventRegistrations.find((candidate) => candidate.id === decodeURIComponent(registrationRoute[1]))
+          if (!entry || !manager && entry.userId !== user.id) throw Object.assign(new Error('Registration not found.'), { status: 404 })
+          if (input.status === 'CANCELLED' && entry.status === 'REGISTERED') {
+            entry.status = 'CANCELLED'
+            addNotification(data, { recipientUserId: entry.userId, title: 'Event registration cancelled', message: `Your registration for ${entry.eventName} was cancelled.`, referenceId: entry.eventId, target: 'events' })
+          } else if (manager && ['ATTENDED', 'ABSENT'].includes(input.status)) {
+            entry.status = input.status
+            entry.attendanceStatus = input.status
+            data.eventAttendance.unshift({ id: randomUUID(), eventId: entry.eventId, userId: entry.userId, userName: entry.userName, status: input.status, markedAt: new Date().toISOString(), markedBy: user.id })
+          } else if (input.status === 'CANCELLED') throw Object.assign(new Error('This registration cannot be cancelled.'), { status: 409 })
+          entry.updatedAt = new Date().toISOString()
+          return entry
+        })
+        return json(response, 200, { registration: updated })
+      }
+
+      if (pathname === '/api/events-clubs/clubs' && request.method === 'POST') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Clubs.')
+        const club = validateCampusClub(await body(request))
+        const created = await store.transact((data) => {
+          dataArrays(data)
+          if (data.campusClubs.some((entry) => entry.name.toLowerCase() === club.name.toLowerCase())) throw Object.assign(new Error('A club with this name already exists.'), { status: 409 })
+          club.id = randomUUID()
+          club.createdAt = club.updatedAt = new Date().toISOString()
+          data.campusClubs.unshift(club)
+          return club
+        })
+        return json(response, 201, { club: created })
+      }
+
+      if (clubRoute && request.method === 'PATCH') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Clubs.')
+        const input = await body(request)
+        const updated = await store.transact((data) => {
+          dataArrays(data)
+          const club = data.campusClubs.find((entry) => entry.id === decodeURIComponent(clubRoute[1]))
+          if (!club) throw Object.assign(new Error('Club not found.'), { status: 404 })
+          const patch = validateCampusClub({ ...club, ...input }, { partial: true })
+          if (patch.name && data.campusClubs.some((entry) => entry.id !== club.id && entry.name.toLowerCase() === patch.name.toLowerCase())) throw Object.assign(new Error('A club with this name already exists.'), { status: 409 })
+          Object.assign(club, patch, { updatedAt: new Date().toISOString() })
+          return club
+        })
+        return json(response, 200, { club: updated })
+      }
+
+      const joinRoute = pathname.match(/^\/api\/events-clubs\/clubs\/([^/]+)\/join$/)
+      if (joinRoute && request.method === 'POST') {
+        const membership = await store.transact((data) => {
+          dataArrays(data)
+          const club = data.campusClubs.find((entry) => entry.id === decodeURIComponent(joinRoute[1]) && entry.active)
+          if (!club) throw Object.assign(new Error('Active Club not found.'), { status: 404 })
+          const existing = data.clubMemberships.find((entry) => entry.clubId === club.id && entry.userId === user.id && ['PENDING', 'APPROVED', 'ACTIVE'].includes(entry.status))
+          if (existing) throw Object.assign(new Error('You already have an active or pending application for this Club.'), { status: 409 })
+          const now = new Date().toISOString()
+          const entry = { id: randomUUID(), clubId: club.id, clubName: club.name, userId: user.id, userName: user.name, role: user.role, department: user.department || '', status: club.requiresApproval ? 'PENDING' : 'ACTIVE', appliedAt: now, joinedAt: club.requiresApproval ? null : now }
+          data.clubMemberships.unshift(entry)
+          if (!club.requiresApproval) addNotification(data, { recipientUserId: user.id, title: 'Club membership active', message: `You joined ${club.name}.`, referenceId: club.id, target: 'events' })
+          else for (const administrator of data.users.filter((candidate) => candidate.active && candidate.role === ROLES.ADMIN)) {
+            addNotification(data, { recipientUserId: administrator.id, title: 'Pending Club application', message: `${user.name} applied to join ${club.name}.`, referenceId: entry.id, target: 'events' })
+          }
+          return entry
+        })
+        return json(response, 201, { membership })
+      }
+
+      if (membershipRoute && request.method === 'PATCH') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Club memberships.')
+        const { status } = await body(request)
+        if (!['APPROVED', 'REJECTED', 'ACTIVE', 'LEFT'].includes(status)) return reject(response, 400, 'Choose an allowed membership status.')
+        const updated = await store.transact((data) => {
+          dataArrays(data)
+          const entry = data.clubMemberships.find((candidate) => candidate.id === decodeURIComponent(membershipRoute[1]))
+          if (!entry) throw Object.assign(new Error('Club membership not found.'), { status: 404 })
+          entry.status = status
+          entry.updatedAt = new Date().toISOString()
+          if (status === 'APPROVED' || status === 'ACTIVE') entry.joinedAt ||= entry.updatedAt
+          addNotification(data, { recipientUserId: entry.userId, title: `Club membership ${status.toLowerCase()}`, message: `${entry.clubName} · ${status.toLowerCase()}.`, referenceId: entry.clubId, target: 'events' })
+          return entry
+        })
+        return json(response, 200, { membership: updated })
+      }
+
+      if (pathname === '/api/events-clubs/announcements' && request.method === 'POST') {
+        if (!manager) return reject(response, 403, 'Administration access is required to post Club announcements.')
+        const input = await body(request)
+        const message = safeText(input.message, 2000)
+        const title = safeText(input.title, 120)
+        const created = await store.transact((data) => {
+          dataArrays(data)
+          const club = data.campusClubs.find((entry) => entry.id === input.clubId && entry.active)
+          if (!club || title.length < 2 || message.length < 3) throw Object.assign(new Error('Choose a Club and enter an announcement title and message.'), { status: 400 })
+          const announcement = { id: randomUUID(), clubId: club.id, clubName: club.name, title, message, createdAt: new Date().toISOString(), createdBy: user.id }
+          data.clubAnnouncements.unshift(announcement)
+          for (const member of data.clubMemberships.filter((entry) => entry.clubId === club.id && entry.status === 'ACTIVE')) addNotification(data, { recipientUserId: member.userId, title, message, referenceId: announcement.id, target: 'events' })
+          return announcement
+        })
+        return json(response, 201, { announcement: created })
+      }
+
+      if (pathname === '/api/events-clubs/activities' && request.method === 'POST') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage Club activities.')
+        const input = await body(request)
+        const created = await store.transact((data) => {
+          dataArrays(data)
+          const club = data.campusClubs.find((entry) => entry.id === input.clubId && entry.active)
+          const title = safeText(input.title, 120)
+          if (!club || title.length < 2 || !validIsoDate(input.date)) throw Object.assign(new Error('Choose an active Club, activity name, and valid date.'), { status: 400 })
+          const activity = { id: randomUUID(), clubId: club.id, clubName: club.name, title, description: safeText(input.description, 1000), date: input.date, venue: safeText(input.venue, 160), public: input.public === true, createdAt: new Date().toISOString() }
+          data.clubActivities.unshift(activity)
+          for (const member of data.clubMemberships.filter((entry) => entry.clubId === club.id && entry.status === 'ACTIVE')) {
+            addNotification(data, { recipientUserId: member.userId, title: 'New Club activity', message: `${club.name} · ${activity.title} · ${activity.date}`, referenceId: activity.id, target: 'events' })
+          }
+          return activity
+        })
+        return json(response, 201, { activity: created })
+      }
+
+      if (pathname === '/api/events-clubs/results' && request.method === 'POST') {
+        if (!manager) return reject(response, 403, 'Administration access is required to manage event results.')
+        const input = await body(request)
+        const result = await store.transact((data) => {
+          dataArrays(data)
+          const registration = data.eventRegistrations.find((entry) => entry.id === input.registrationId)
+          const position = safeText(input.position, 60)
+          if (!registration || !position) throw Object.assign(new Error('Choose a registered participant and enter a result.'), { status: 400 })
+          const record = { id: randomUUID(), eventId: registration.eventId, eventName: registration.eventName, userId: registration.userId, userName: registration.userName, position, remarks: safeText(input.remarks, 500), date: new Date().toISOString(), createdBy: user.id }
+          data.eventResults.unshift(record)
+          return record
+        })
+        return json(response, 201, { result })
+      }
+
+      return reject(response, 404, 'Events & Clubs route not found.')
     }
 
     const noticeReadRoute = pathname.match(/^\/api\/notices\/([^/]+)\/read$/)
@@ -1268,7 +1528,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         .filter((record) => canViewComplaint(user, record))
         .filter((record) => !searchParams.get('status') || record.status === searchParams.get('status'))
         .filter((record) => !searchParams.get('category') || record.category === searchParams.get('category'))
-        .filter((record) => !searchParams.get('department') || record.department === searchParams.get('department'))
+        .filter((record) => !searchParams.get('department') || sameDepartment(record.department, searchParams.get('department')))
         .filter((record) => !searchParams.get('role') || record.submitterRole === searchParams.get('role'))
         .filter((record) => !searchParams.get('date') || record.createdAt.slice(0, 10) === searchParams.get('date'))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -1431,11 +1691,15 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsManager = [ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentSportsRole = [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentEventRegistrationPath = /^\/api\/sports\/events\/[^/]+\/register$/.test(pathname) && request.method === 'POST'
+    const publicSportsEventPath = /^\/api\/sports\/events\/[^/]+$/.test(pathname) && request.method === 'GET'
+    const studentSportsApplicationPath = pathname === '/api/sports/applications' && request.method === 'POST'
     const sportsApplicationCancelPath = /^\/api\/sports\/applications\/[^/]+$/.test(pathname) && request.method === 'PATCH'
     const sportsManagementPath = pathname.startsWith('/api/sports/')
       && pathname !== '/api/sports/student'
       && !(pathname === '/api/sports/events' && request.method === 'GET')
+      && !publicSportsEventPath
       && !studentEventRegistrationPath
+      && !studentSportsApplicationPath
       && !sportsApplicationCancelPath
     if (sportsManagementPath && !sportsManager) return reject(response, 403, 'Sports Captain or Administration access is required.')
 
@@ -1457,7 +1721,21 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const noticeIds = new Set(data.sportsNotices.filter((notice) => notice.recipientIds?.includes(user.id)).map((notice) => notice.id))
       return json(response, 200, {
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
-        events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED'),
+        events: data.sportsEvents.filter(isPublicSportsEvent).map((entry) => ({
+          ...publicSportsEvent(entry),
+          registrationCount: data.sportsRegistrations.filter((registration) =>
+            registration.eventId === entry.id && (registration.applicationType !== 'SPORTS_EVENT' || SPORTS_EVENT_CAPACITY_STATUSES.includes(registration.status))).length,
+          registrationStatus: ownRegistrations.find((registration) => registration.eventId === entry.id)?.status || '',
+          registrationEligible: validEventEligibility(entry, user),
+          registrationAvailable: SPORTS_EVENT_VISIBLE_STATUSES.includes(sportsEventStatus(entry))
+            && Date.parse(`${entry.registrationDeadline}T23:59:59`) >= Date.now()
+            && sportsEventStartsAt(entry) >= Date.now()
+            && validEventEligibility(entry, user)
+            && !(entry.maxParticipants && data.sportsRegistrations.filter((registration) =>
+              registration.eventId === entry.id && (registration.applicationType !== 'SPORTS_EVENT' || SPORTS_EVENT_CAPACITY_STATUSES.includes(registration.status))).length >= entry.maxParticipants)
+            && !ownRegistrations.some((registration) => registration.eventId === entry.id),
+        })),
+        sportsEventRegistrations: ownRegistrations.filter((entry) => entry.applicationType === 'SPORTS_EVENT'),
         registrations: ownRegistrations,
         participations,
         mySports: [...sportIds].map((sportId) => {
@@ -1479,7 +1757,10 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const updated = await store.transact((data) => {
         const application = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(pathname.match(/^\/api\/sports\/applications\/([^/]+)$/)[1]))
         if (!application || application.studentId !== user.id) throw Object.assign(new Error('Sports application not found.'), { status: 404 })
-        if (!['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(application.status)) throw Object.assign(new Error('This application can no longer be cancelled.'), { status: 409 })
+        const cancellable = application.applicationType === 'SPORTS_EVENT'
+          ? ['PENDING'].includes(application.status)
+          : ['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(application.status)
+        if (!cancellable) throw Object.assign(new Error('This application can no longer be cancelled.'), { status: 409 })
         application.status = 'CANCELLED'
         application.updatedAt = new Date().toISOString()
         return application
@@ -1487,12 +1768,41 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return json(response, 200, { application: publicSportsRegistration(updated, await store.read()) })
     }
 
+    if (studentSportsApplicationPath) {
+      if (!studentSportsRole) return reject(response, 403, 'Your role cannot apply for sports.')
+      const input = await body(request)
+      const application = await store.transact((data) => {
+        const sport = sportFor(data, input.sportId)
+        if (!sport) throw Object.assign(new Error('Choose an active sport.'), { status: 400 })
+        data.sportsRegistrations ??= []
+        if (data.sportsRegistrations.some((entry) =>
+          entry.applicationType === 'SPORT' && entry.studentId === user.id && entry.sportId === sport.id &&
+          ['SUBMITTED', 'SHORTLISTED', 'SELECTED'].includes(entry.status))) {
+          throw Object.assign(new Error('You already have an active application for this sport.'), { status: 409 })
+        }
+        const details = safeText(input.details, 2000)
+        if (details.length < 10) throw Object.assign(new Error('Add at least 10 characters of relevant details.'), { status: 400 })
+        const now = new Date().toISOString()
+        const created = {
+          id: randomUUID(), applicationType: 'SPORT', eventId: '', eventName: '',
+          sportId: sport.id, sportName: sport.title, studentId: user.id,
+          studentName: user.name, department: user.department || '',
+          semester: user.semester || '', mobile: user.mobile || '',
+          position: safeText(input.position, 80), details,
+          status: 'SUBMITTED', createdAt: now, updatedAt: now,
+        }
+        data.sportsRegistrations.unshift(created)
+        return created
+      })
+      return json(response, 201, { application: publicSportsRegistration(application, await store.read()) })
+    }
+
     if (pathname === '/api/sports/management' && request.method === 'GET') {
       const data = await readSportsData(store)
-      const upcomingEvents = data.sportsEvents.filter((entry) => entry.status === 'OPEN' && Date.parse(`${entry.date}T${entry.time || '23:59'}:00`) >= Date.now())
+      const upcomingEvents = data.sportsEvents.filter((entry) => SPORTS_EVENT_VISIBLE_STATUSES.includes(sportsEventStatus(entry)) && sportsEventStartsAt(entry) >= Date.now())
       const upcomingMatches = data.sportsSchedules.filter((entry) => entry.kind === 'MATCH' && Date.parse(`${entry.date}T${entry.time || '23:59'}:00`) >= Date.now())
       const activities = [
-        ...data.sportsRegistrations.map((entry) => ({ id: entry.id, type: 'Registration', title: `${entry.studentName} registered for ${entry.eventName}`, createdAt: entry.createdAt })),
+        ...data.sportsRegistrations.map((entry) => ({ id: entry.id, type: 'Application', title: `${entry.studentName} applied for ${entry.eventName || entry.sportName}`, createdAt: entry.createdAt })),
         ...data.sportsEvents.map((entry) => ({ id: entry.id, type: 'Event', title: entry.name, createdAt: entry.createdAt })),
         ...data.sportsTeams.map((entry) => ({ id: entry.id, type: 'Team', title: `Team created: ${entry.name}`, createdAt: entry.createdAt })),
         ...data.sportsSchedules.map((entry) => ({ id: entry.id, type: 'Schedule', title: `Scheduled: ${entry.title}`, createdAt: entry.createdAt })),
@@ -1502,8 +1812,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       ]
       return json(response, 200, {
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
-        events: data.sportsEvents,
+        events: data.sportsEvents.map(publicSportsEvent),
         registrations: data.sportsRegistrations.map((entry) => publicSportsRegistration(entry, data)),
+        departments: SPORTS_DEPARTMENTS,
         teams: data.sportsTeams.map((team) => publicSportsTeam(team, data.users)),
         schedules: data.sportsSchedules,
         attendance: data.sportsAttendance,
@@ -1516,7 +1827,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           totalPlayers: new Set(data.sportsTeams.flatMap((team) => (team.members || []).filter((entry) => entry.status === 'ACTIVE' && activeStudent(data, entry.studentId)).map((entry) => entry.studentId))).size,
           totalTeams: data.sportsTeams.length,
           upcomingEvents: upcomingEvents.length + upcomingMatches.length,
-          pendingRegistrations: data.sportsRegistrations.filter((entry) => ['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(entry.status)).length,
+          pendingRegistrations: data.sportsRegistrations.filter((entry) => ['SUBMITTED', 'APPLIED', 'REGISTERED', 'SHORTLISTED', 'PENDING'].includes(entry.status)).length,
           activeTeams: data.sportsTeams.filter((team) => team.status === 'ACTIVE').length,
           recentActivities: activities.filter((entry) => entry.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8),
         },
@@ -1563,8 +1874,17 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     if (pathname === '/api/sports/events' && request.method === 'GET') {
       if (!studentSportsRole) return reject(response, 403, 'Student Sports access is not assigned to your role.')
-      const data = await store.read()
-      return json(response, 200, { events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED') })
+      const data = await readSportsData(store)
+      return json(response, 200, { events: data.sportsEvents.filter(isPublicSportsEvent).map(publicSportsEvent) })
+    }
+
+    const sportsEventRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)$/)
+    if (sportsEventRoute && request.method === 'GET') {
+      if (!studentSportsRole) return reject(response, 403, 'Student Sports access is not assigned to your role.')
+      const data = await readSportsData(store)
+      const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsEventRoute[1]))
+      if (!event || !sportsManager && !isPublicSportsEvent(event)) return reject(response, 404, 'Sports event not found.')
+      return json(response, 200, { event: publicSportsEvent(event) })
     }
 
     if (pathname === '/api/sports/events' && request.method === 'POST') {
@@ -1575,12 +1895,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         event.createdAt = new Date().toISOString()
         event.updatedAt = event.createdAt
         data.sportsEvents.unshift(event)
+        if (SPORTS_EVENT_VISIBLE_STATUSES.includes(event.status)) notifySportsEventAudience(data, event, addNotification)
         return event
       })
       return json(response, 201, { event: created })
     }
 
-    const sportsEventRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)$/)
     if (sportsEventRoute && request.method === 'PATCH') {
       const eventId = decodeURIComponent(sportsEventRoute[1])
       const input = await body(request)
@@ -1588,7 +1908,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         const event = data.sportsEvents.find((entry) => entry.id === eventId)
         if (!event) throw Object.assign(new Error('Sports event or trial not found.'), { status: 404 })
         const patch = validateSportsEvent({ ...event, ...input }, data, { partial: true })
+        const wasPublished = SPORTS_EVENT_PUBLISHED_STATUSES.includes(sportsEventStatus(event))
         Object.assign(event, patch, { updatedAt: new Date().toISOString() })
+        if (!wasPublished && SPORTS_EVENT_VISIBLE_STATUSES.includes(event.status)) notifySportsEventAudience(data, event, addNotification)
         return event
       })
       return json(response, 200, { event: updated })
@@ -1599,14 +1921,28 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(user.role)) return reject(response, 403, 'Your role cannot apply for sports events.')
       const registration = await store.transact((data) => {
         const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsRegistrationRoute[1]))
-        if (!event || event.status !== 'OPEN') throw Object.assign(new Error('This event or trial is not open for registration.'), { status: 409 })
+        if (event) normalizeStoredSportsEvent(event)
+        for (const entry of data.sportsRegistrations.filter((candidate) => candidate.eventId === event?.id && candidate.applicationType === 'SPORTS_EVENT')) {
+          normalizeSportsEventRegistration(entry)
+        }
+        if (!event || !SPORTS_EVENT_VISIBLE_STATUSES.includes(sportsEventStatus(event))) throw Object.assign(new Error('This event is not open for registration.'), { status: 409 })
         if (!sportFor(data, event.sportId)) throw Object.assign(new Error('This event’s sport is no longer active.'), { status: 409 })
         if (!validEventEligibility(event, user)) throw Object.assign(new Error('You are not eligible to register for this event.'), { status: 403 })
         const now = new Date()
         if (Date.parse(`${event.registrationDeadline}T23:59:59`) < now.getTime()) throw Object.assign(new Error('The registration deadline has passed.'), { status: 409 })
-        if (data.sportsRegistrations.some((entry) => entry.eventId === event.id && entry.studentId === user.id && !['REJECTED', 'CANCELLED'].includes(entry.status))) throw Object.assign(new Error('You already have an application for this event.'), { status: 409 })
-        if (event.maxParticipants && data.sportsRegistrations.filter((entry) => entry.eventId === event.id && !['REJECTED', 'CANCELLED'].includes(entry.status)).length >= event.maxParticipants) throw Object.assign(new Error('This event has reached its participant limit.'), { status: 409 })
-        const created = { id: randomUUID(), eventId: event.id, eventName: event.name, sportId: event.sportId, sportName: event.sportName, studentId: user.id, studentName: user.name, department: user.department || '', semester: user.semester || '', mobile: user.mobile || '', status: 'APPLIED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        if (sportsEventStartsAt(event) < now.getTime()) throw Object.assign(new Error('This event has already started.'), { status: 409 })
+        if (data.sportsRegistrations.some((entry) => entry.eventId === event.id && entry.studentId === user.id)) throw Object.assign(new Error('You already have a registration for this event.'), { status: 409 })
+        if (event.maxParticipants && data.sportsRegistrations.filter((entry) => entry.eventId === event.id && (entry.applicationType !== 'SPORTS_EVENT' || SPORTS_EVENT_CAPACITY_STATUSES.includes(entry.status))).length >= event.maxParticipants) throw Object.assign(new Error('This event has reached its participant limit.'), { status: 409 })
+        const registeredAt = now.toISOString()
+        const created = {
+          id: randomUUID(), applicationType: 'SPORTS_EVENT', eventId: event.id,
+          eventName: event.name, sportId: event.sportId, sportName: event.sportName,
+          studentId: user.id, studentName: user.name, userId: user.id, userName: user.name,
+          department: normalizeSportsDepartment(user.department) || user.department || '', course: user.course || '',
+          semester: user.semester || user.admissionYear || '', mobile: user.mobile || '',
+          status: SPORTS_EVENT_REGISTRATION_STATUS.PENDING, registrationDateTime: registeredAt,
+          createdAt: registeredAt, updatedAt: registeredAt,
+        }
         data.sportsRegistrations.unshift(created)
         return created
       })
@@ -1621,16 +1957,29 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsParticipantRoute = pathname.match(/^\/api\/sports\/registrations\/([^/]+)$/)
     if (sportsParticipantRoute && request.method === 'PATCH') {
       const { status } = await body(request)
-      const transitions = { APPLIED: ['SHORTLISTED', 'REJECTED'], REGISTERED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: ['REJECTED'], REJECTED: [], CANCELLED: [] }
       const updated = await store.transact((data) => {
         const registration = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(sportsParticipantRoute[1]))
+        const isSportsEvent = registration?.applicationType === 'SPORTS_EVENT'
+        const transitions = isSportsEvent
+          ? { [SPORTS_EVENT_REGISTRATION_STATUS.PENDING]: [SPORTS_EVENT_REGISTRATION_STATUS.ACCEPTED, SPORTS_EVENT_REGISTRATION_STATUS.REJECTED] }
+          : registration?.applicationType === 'SPORT'
+          ? { SUBMITTED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: [], REJECTED: [] }
+          : { APPLIED: ['SHORTLISTED', 'REJECTED'], REGISTERED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: ['REJECTED'], REJECTED: [], CANCELLED: [] }
         if (!registration) throw Object.assign(new Error('Sports registration not found.'), { status: 404 })
         if (!transitions[registration.status]?.includes(status)) throw Object.assign(new Error('That player selection transition is not allowed.'), { status: 409 })
         registration.status = status
         registration.updatedAt = new Date().toISOString()
-        if (status === 'SELECTED' || status === 'REJECTED') {
-          const existing = data.sportsParticipations.find((entry) => entry.userId === registration.studentId && entry.sportId === registration.sportId && entry.eventId === registration.eventId)
-          const participation = existing || { id: randomUUID(), userId: registration.studentId, sportId: registration.sportId, sportName: registration.sportName, eventId: registration.eventId, eventName: registration.eventName, source: 'EVENT', createdAt: registration.createdAt }
+        if (!isSportsEvent && (status === 'SELECTED' || status === 'REJECTED')) {
+          const source = registration.applicationType === 'SPORT' ? 'APPLICATION' : 'EVENT'
+          const existing = data.sportsParticipations.find((entry) =>
+            entry.userId === registration.studentId && entry.sportId === registration.sportId &&
+            (source === 'APPLICATION' ? entry.source === source && entry.applicationId === registration.id : entry.source === source && entry.eventId === registration.eventId))
+          const participation = existing || {
+            id: randomUUID(), userId: registration.studentId, sportId: registration.sportId,
+            sportName: registration.sportName, eventId: registration.eventId,
+            eventName: registration.eventName, applicationId: source === 'APPLICATION' ? registration.id : '',
+            source, createdAt: registration.createdAt,
+          }
           participation.status = status
           participation.active = status === 'SELECTED'
           participation.selectedAt = status === 'SELECTED' ? new Date().toISOString() : participation.selectedAt || null
@@ -1638,7 +1987,15 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           if (!existing) data.sportsParticipations.unshift(participation)
         }
         const student = data.users.find((candidate) => candidate.id === registration.studentId && candidate.active)
-        if (student) addNotification(data, { recipientUserId: student.id, title: `Sports trial ${status.toLowerCase()}`, message: `${registration.eventName} · ${status === 'SELECTED' ? 'You are eligible for team selection.' : `Your status is ${status.toLowerCase()}.`}`, referenceId: registration.eventId, target: 'sports' })
+        if (student) {
+          const title = isSportsEvent ? `Sports Event registration ${status.toLowerCase()}` : registration.applicationType === 'SPORT' ? `Sports application ${status.toLowerCase()}` : `Sports trial ${status.toLowerCase()}`
+          const message = isSportsEvent
+            ? `${registration.eventName} · ${registration.sportName} · Your registration was ${status.toLowerCase()}.`
+            : status === 'SELECTED'
+            ? registration.applicationType === 'SPORT' ? 'You are now an active participant in this sport.' : 'You are eligible for team selection.'
+            : `${registration.sportName}${registration.eventName ? ` · ${registration.eventName}` : ''} · Your status is ${status.toLowerCase()}.`
+          addNotification(data, { recipientUserId: student.id, title, message, referenceId: registration.eventId || registration.id, target: 'sports' })
+        }
         return registration
       })
       return json(response, 200, { registration: publicSportsRegistration(updated, await store.read()) })
@@ -1946,6 +2303,124 @@ function normalizeStaffModules(value) {
 
 function safeText(value, maximum) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : ''
+}
+
+function validDepartment(value) {
+  return DEPARTMENTS.includes(value) || LEGACY_DEPARTMENTS.includes(value)
+}
+
+function canonicalDepartment(value) {
+  if (value === 'CSE') return 'Computer Science'
+  if (value === 'ECE') return 'Electrical Engineering'
+  if (['Computer Science', 'Civil Engineering', 'Mechanical Engineering', 'Electrical Engineering'].includes(value)) return 'B.Tech'
+  if (value === 'Business Administration') return 'Management'
+  return value
+}
+
+function sameDepartment(left, right) {
+  if (left === right) return true
+  const legacyDepartments = new Set([...LEGACY_DEPARTMENTS, 'CSE', 'ECE'])
+  if (legacyDepartments.has(left) && legacyDepartments.has(right)) {
+    const aliases = { CSE: 'Computer Science', ECE: 'Electrical Engineering' }
+    return (aliases[left] || left) === (aliases[right] || right)
+  }
+  return canonicalDepartment(left || '') === canonicalDepartment(right || '')
+}
+
+function safeWebAddress(value, field) {
+  const address = safeText(value, 2000)
+  if (!address) return ''
+  if (address.startsWith('/') && !address.startsWith('//')) return address
+  if (/^https?:\/\/[^\s]+$/i.test(address)) return address
+  throw Object.assign(new Error(`Enter a valid ${field} URL.`), { status: 400 })
+}
+
+function validateCampusEvent(input, { partial = false } = {}) {
+  const event = {
+    name: safeText(input.name, 160),
+    category: safeText(input.category, 60),
+    description: safeText(input.description, 5000),
+    date: safeText(input.date, 10),
+    startTime: safeText(input.startTime, 10),
+    endTime: safeText(input.endTime, 10),
+    venue: safeText(input.venue, 180),
+    organizer: safeText(input.organizer, 160),
+    contact: safeText(input.contact, 180),
+    registrationDeadline: safeText(input.registrationDeadline, 10),
+    department: safeText(input.department, 100),
+    course: safeText(input.course, 100),
+    semester: safeText(input.semester, 60),
+    eligibility: safeText(input.eligibility, 1000),
+    maxParticipants: input.maxParticipants === '' || input.maxParticipants == null ? null : Number(input.maxParticipants),
+    poster: safeWebAddress(input.poster, 'event poster'),
+    status: safeText(input.status, 30) || 'DRAFT',
+    featured: input.featured === true,
+  }
+  const statuses = ['DRAFT', 'PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'ONGOING', 'COMPLETED', 'CANCELLED']
+  if (partial) {
+    for (const key of Object.keys(event)) if (!Object.hasOwn(input, key)) delete event[key]
+    for (const key of ['name', 'category', 'description', 'venue', 'organizer']) {
+      if (Object.hasOwn(event, key) && event[key].length < (key === 'description' ? 3 : 2)) throw Object.assign(new Error(`Enter a valid event ${key}.`), { status: 400 })
+    }
+    if (Object.hasOwn(event, 'date') && !validCalendarDate(event.date)) throw Object.assign(new Error('Enter a valid event date.'), { status: 400 })
+    if (Object.hasOwn(event, 'registrationDeadline') && event.registrationDeadline && !validCalendarDate(event.registrationDeadline)) throw Object.assign(new Error('Enter a valid registration deadline.'), { status: 400 })
+    if (Object.hasOwn(event, 'startTime') && !validEventTime(event.startTime) || Object.hasOwn(event, 'endTime') && !validEventTime(event.endTime)) throw Object.assign(new Error('Enter valid event times.'), { status: 400 })
+    if (Object.hasOwn(event, 'department') && event.department && !validDepartment(event.department)) throw Object.assign(new Error('Choose a valid department.'), { status: 400 })
+    if (Object.hasOwn(input, 'maxParticipants') && event.maxParticipants !== null && (!Number.isInteger(event.maxParticipants) || event.maxParticipants < 1 || event.maxParticipants > 100000)) throw Object.assign(new Error('Enter a valid participant limit.'), { status: 400 })
+    if (event.status && !statuses.includes(event.status)) throw Object.assign(new Error('Choose a valid event status.'), { status: 400 })
+    return event
+  }
+  if (event.name.length < 2 || event.category.length < 2 || event.description.length < 3 || !validCalendarDate(event.date)
+    || !validEventTime(event.startTime) || !validEventTime(event.endTime) || !event.venue
+    || !event.organizer || event.registrationDeadline && !validCalendarDate(event.registrationDeadline)
+    || event.department && !validDepartment(event.department)
+    || event.maxParticipants !== null && (!Number.isInteger(event.maxParticipants) || event.maxParticipants < 1 || event.maxParticipants > 100000)
+    || !statuses.includes(event.status)) {
+    throw Object.assign(new Error('Complete the event name, category, description, date, times, venue, organizer, and valid status.'), { status: 400 })
+  }
+  return event
+}
+
+function validEventTime(value) {
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return false
+  return true
+}
+
+function validateCampusClub(input, { partial = false } = {}) {
+  const club = {
+    name: safeText(input.name, 120),
+    category: safeText(input.category, 60),
+    description: safeText(input.description, 3000),
+    purpose: safeText(input.purpose, 1500),
+    activities: safeText(input.activities, 1500),
+    coordinator: safeText(input.coordinator, 160),
+    contact: safeText(input.contact, 180),
+    logo: safeWebAddress(input.logo, 'Club logo'),
+    active: input.active !== false,
+    requiresApproval: input.requiresApproval === true,
+  }
+  if (partial) {
+    for (const key of Object.keys(club)) if (!Object.hasOwn(input, key)) delete club[key]
+    return club
+  }
+  if (club.name.length < 2 || club.category.length < 2 || club.description.length < 3) throw Object.assign(new Error('Enter the Club name, category, and description.'), { status: 400 })
+  return club
+}
+
+function notifyEventAudience(data, event, title, addNotification) {
+  const eligible = data.users.filter((candidate) => candidate.active
+    && [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(candidate.role)
+    && eligibleForCampusEvent(event, candidate))
+  for (const recipient of eligible) addNotification(data, {
+    recipientUserId: recipient.id, title, message: `${event.name} · ${event.date} · ${event.venue}`,
+    referenceId: event.id, target: 'events',
+  })
+}
+
+function eligibleForCampusEvent(event, user) {
+  return (!event.department || sameDepartment(event.department, user.department))
+    && (!event.course || event.course === user.course)
+    && (!event.semester || event.semester === user.semester)
 }
 
 function validateLostFoundReport(input, user) {
@@ -2432,7 +2907,7 @@ function validateCampusNotice(input, user) {
   } else if ([ROLES.HOD, ROLES.STAFF].includes(user.role)) {
     if (!['Academic', 'Examination', 'Department'].includes(category) || !['DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE'].includes(target.type)) throw Object.assign(new Error('Your role can issue department-scoped academic notices only.'), { status: 403 })
     if (!user.department) throw Object.assign(new Error('A department must be assigned to issue department notices.'), { status: 403 })
-    if (target.department && !sameNoticeValue(target.department, user.department)) throw Object.assign(new Error('You cannot issue a notice for another department.'), { status: 403 })
+    if (target.department && !sameDepartment(target.department, user.department)) throw Object.assign(new Error('You cannot issue a notice for another department.'), { status: 403 })
     target.department = user.department
     if (target.type === 'COURSE' && !target.course || target.type === 'SEMESTER' && !target.semester || target.type === 'PROFILE' && !target.semester) throw Object.assign(new Error('Choose the required course or semester audience.'), { status: 400 })
   }
@@ -2488,7 +2963,7 @@ function campusNoticeRecipients(notice, data) {
   } else if (target.type === 'HOSTEL') {
     users = users.filter((candidate) => sameNoticeValue(candidate.hostel || candidate.hostelName || '', target.hostel))
   }
-  if (target.department) users = users.filter((candidate) => sameNoticeValue(candidate.department || '', target.department))
+  if (target.department) users = users.filter((candidate) => sameDepartment(candidate.department || '', target.department))
   if (target.course) users = users.filter((candidate) => sameNoticeValue(candidate.course || '', target.course))
   if (target.semester) users = users.filter((candidate) => sameSemester(candidate.semester || candidate.year || '', target.semester))
   return [...new Set(users.map((candidate) => candidate.id))]
@@ -2533,7 +3008,7 @@ function activeStudent(data, id) {
 
 function publicSportsStudent(user) {
   if (!user) return null
-  return { id: user.id, name: user.name, department: user.department || '', semester: user.semester || '', course: user.course || '', mobile: user.mobile || '', email: user.email || '' }
+  return { id: user.id, name: user.name, department: normalizeSportsDepartment(user.department) || user.department || '', semester: user.semester || '', course: user.course || '', mobile: user.mobile || '', email: user.email || '' }
 }
 
 function publicSportsTeam(team, users) {
@@ -2554,9 +3029,13 @@ function publicSportsTeam(team, users) {
 
 function publicSportsRegistration(entry, data) {
   const student = data.users.find((candidate) => candidate.id === entry.studentId)
+  const profileDepartment = student?.department || entry.department || ''
   return {
     ...entry, studentName: student?.name || entry.studentName,
-    department: student?.department || entry.department || '',
+    department: entry.applicationType === 'SPORTS_EVENT'
+      ? normalizeSportsDepartment(profileDepartment) || profileDepartment
+      : profileDepartment,
+    course: student?.course || entry.course || '',
     semester: student?.semester || entry.semester || '',
     mobile: student?.mobile || entry.mobile || '',
     status: entry.status === 'REGISTERED' ? 'APPLIED' : entry.status,
@@ -2572,11 +3051,19 @@ function activeSportsParticipations(data, userId) {
 
 async function readSportsData(store) {
   const data = await store.read()
+  const legacyEvents = data.sportsEvents.some(sportsEventNeedsMigration)
+  const legacyEventRegistrations = data.sportsRegistrations.some((entry) =>
+    entry.applicationType === 'SPORTS_EVENT' && !SPORTS_EVENT_REGISTRATION_STATUSES.includes(entry.status))
   const legacyMembers = data.sportsTeams.some((team) => team.status === 'ACTIVE' && (team.members || []).some((member) =>
     member.status === 'ACTIVE' && activeStudent(data, member.studentId) &&
     !data.sportsParticipations.some((entry) => entry.userId === member.studentId && entry.sportId === team.sportId && entry.source === 'TEAM' && entry.teamId === team.id)))
-  if (!legacyMembers) return data
+  if (!legacyMembers && !legacyEvents && !legacyEventRegistrations) return data
   return store.transact((current) => {
+    current.sportsEvents.forEach(normalizeStoredSportsEvent)
+    for (const registration of current.sportsRegistrations) {
+      if (registration.applicationType !== 'SPORTS_EVENT') continue
+      normalizeSportsEventRegistration(registration)
+    }
     for (const team of current.sportsTeams) {
       if (team.status !== 'ACTIVE') continue
       for (const member of team.members || []) {
@@ -2588,6 +3075,70 @@ async function readSportsData(store) {
     }
     return current
   })
+}
+
+function sportsEventNeedsMigration(event) {
+  const status = normalizeSportsEventStatus(event.status)
+  const startTime = normalizeSportsTime(event.startTime || event.time)
+  const endTime = normalizeSportsTime(event.endTime)
+  const departments = Array.isArray(event.eligibleDepartments) ? event.eligibleDepartments : []
+  const normalizedDepartments = departments.includes('All Departments')
+    ? []
+    : departments.map((department) => normalizeSportsDepartment(department) || department)
+  return status !== event.status
+    || !SPORTS_EVENT_STATUSES.includes(status)
+    || !event.startTime && Boolean(startTime)
+    || Boolean(event.startTime || event.time) && !startTime
+    || Boolean(event.time)
+    || Boolean(endTime && endTime !== event.endTime)
+    || JSON.stringify(normalizedDepartments) !== JSON.stringify(departments)
+    || status !== SPORTS_EVENT_STATUS.DRAFT && normalizedDepartments.some((department) => !SPORTS_DEPARTMENTS.includes(department))
+}
+
+function normalizeStoredSportsEvent(event) {
+  const normalizedStatus = normalizeSportsEventStatus(event.status)
+  if (SPORTS_EVENT_STATUSES.includes(normalizedStatus)) event.status = normalizedStatus
+  else {
+    console.warn(`Sports event ${event.id} had an unsupported status and was moved to DRAFT.`)
+    event.status = SPORTS_EVENT_STATUS.DRAFT
+  }
+
+  const startTime = normalizeSportsTime(event.startTime || event.time)
+  if (startTime) event.startTime = startTime
+  else if (event.startTime || event.time) {
+    console.warn(`Sports event ${event.id} had an invalid legacy start time and was moved to DRAFT.`)
+    event.startTime = ''
+    event.status = SPORTS_EVENT_STATUS.DRAFT
+  }
+  const endTime = normalizeSportsTime(event.endTime)
+  if (endTime) event.endTime = endTime
+  else if (event.endTime) {
+    console.warn(`Sports event ${event.id} had an invalid legacy end time and was moved to DRAFT.`)
+    event.endTime = ''
+    event.status = SPORTS_EVENT_STATUS.DRAFT
+  }
+  delete event.time
+
+  if (Array.isArray(event.eligibleDepartments)) {
+    event.eligibleDepartments = event.eligibleDepartments.includes(ALL_DEPARTMENTS)
+      ? []
+      : event.eligibleDepartments.map((department) => normalizeSportsDepartment(department) || department)
+  } else event.eligibleDepartments = []
+  if (event.eligibleDepartments.some((department) => !SPORTS_DEPARTMENTS.includes(department))) {
+    console.warn(`Sports event ${event.id} has an unrecognized legacy department; it remains restricted until edited.`)
+    event.status = SPORTS_EVENT_STATUS.DRAFT
+  }
+}
+
+function normalizeSportsEventRegistration(registration) {
+  if (['REGISTERED', 'APPLIED', 'SHORTLISTED', 'SUBMITTED'].includes(registration.status)) {
+    registration.status = SPORTS_EVENT_REGISTRATION_STATUS.PENDING
+  } else if (registration.status === 'SELECTED') {
+    registration.status = SPORTS_EVENT_REGISTRATION_STATUS.ACCEPTED
+  } else if (!SPORTS_EVENT_REGISTRATION_STATUSES.includes(registration.status)) {
+    console.warn(`Sports Event registration ${registration.id} had an unsupported status and was moved to PENDING.`)
+    registration.status = SPORTS_EVENT_REGISTRATION_STATUS.PENDING
+  }
 }
 
 function ensureSportsParticipation(data, participant, sportId, sportName, { eventId = '', teamId = '', source = 'TEAM' } = {}) {
@@ -2631,47 +3182,121 @@ function sportFor(data, value) {
 
 function validEventEligibility(event, user) {
   const departments = event.eligibleDepartments || []
-  return !departments.length || departments.includes(user.department)
+  if (!departments.length || departments.includes(ALL_DEPARTMENTS)) return true
+  const userDepartment = normalizeSportsDepartment(user.department)
+  return Boolean(userDepartment && departments.some((department) => normalizeSportsDepartment(department) === userDepartment))
 }
 
 function validateSportsEvent(input, data, { partial = false } = {}) {
-  const name = safeText(input.name, 120)
-  const sport = sportFor(data, input.sportId || input.sportName)
-  const date = safeText(input.date, 10)
-  const time = safeText(input.time, 5)
-  const registrationDeadline = safeText(input.registrationDeadline, 10)
-  const venue = safeText(input.venue, 160)
-  const eligibility = safeText(input.eligibility, 300)
-  const description = safeText(input.description, 2000)
-  const status = safeText(input.status || 'OPEN', 20).toUpperCase()
+  let contract
+  try {
+    contract = normalizeSportsEventContract(input)
+  } catch (error) {
+    throw sportsError(error.message)
+  }
+  const name = safeText(contract.name, 120)
+  const sport = sportFor(data, contract.sportId || contract.sportName)
+  const date = safeText(contract.date, 10)
+  const { startTime, endTime, status, kind, eligibleDepartments, audienceType } = contract
+  const registrationDeadline = safeText(contract.registrationDeadline, 10)
+  const venue = safeText(contract.venue, 160)
+  const eligibility = safeText(contract.eligibility, 300)
+  const description = safeText(contract.description, 2000)
+  const instructions = safeText(contract.instructions, 2000)
+  const eventImage = validateSportsPoster(contract.eventImage || '')
   const maxParticipants = input.maxParticipants === '' || input.maxParticipants === undefined ? 0 : Number(input.maxParticipants)
-  const kind = safeText(input.kind || 'EVENT', 20).toUpperCase()
-  const eligibleDepartments = Array.isArray(input.eligibleDepartments) ? [...new Set(input.eligibleDepartments.map((value) => safeText(value, 100)).filter(Boolean))] : []
-  if (eligibleDepartments.some((department) => !DEPARTMENTS.includes(department))) throw sportsError('Choose valid campus departments for event eligibility.')
+  const audienceId = audienceType === 'SPORT' ? (sport?.id || '') : audienceType === 'TEAM' ? safeText(input.audienceId, 64) : ''
   if ((!partial || input.name !== undefined) && name.length < 2) throw sportsError('Enter an event or trial name.')
   if (!sport && (!partial || input.sportId !== undefined || input.sportName !== undefined)) throw sportsError('Choose an active sport.')
   if ((!partial || input.date !== undefined) && !validCalendarDate(date)) throw sportsError('Choose a valid event date.')
-  if ((!partial || input.time !== undefined) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw sportsError('Choose a valid event time.')
+  if ((!partial || input.startTime !== undefined || input.time !== undefined) && !isNormalizedSportsTime(startTime)) throw sportsError('Choose a valid start time.')
+  if ((!partial || input.endTime !== undefined) && !isNormalizedSportsTime(endTime)) throw sportsError('Choose a valid end time.')
+  if ((!partial || input.startTime !== undefined || input.time !== undefined || input.endTime !== undefined) && startTime >= endTime) throw sportsError('End time must be after start time.')
   if ((!partial || input.registrationDeadline !== undefined) && !validCalendarDate(registrationDeadline)) throw sportsError('Choose a valid registration deadline.')
   if (date && registrationDeadline && registrationDeadline > date) throw sportsError('Registration deadline cannot be after the event date.')
   if ((!partial || input.venue !== undefined) && !venue) throw sportsError('Enter an event venue.')
   if ((!partial || input.description !== undefined) && description.length < 3) throw sportsError('Add an event description.')
-  if ((!partial || input.status !== undefined) && !['OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'].includes(status)) throw sportsError('Choose OPEN, CLOSED, CANCELLED, or COMPLETED status.')
-  if ((!partial || input.kind !== undefined) && !['EVENT', 'TRIAL', 'MATCH', 'PRACTICE'].includes(kind)) throw sportsError('Choose an event, trial, match, or practice type.')
   if ((!partial || input.maxParticipants !== undefined) && (!Number.isInteger(maxParticipants) || maxParticipants < 0 || maxParticipants > 10000)) throw sportsError('Maximum participants must be a whole number from 0 to 10,000.')
+  if ((!partial || input.eligibility !== undefined) && !eligibility) throw sportsError('Describe who is eligible for this event.')
+  if (audienceType === 'SPORT' && (!sport || audienceId !== sport.id)) throw sportsError('Sports Event notifications must target the event sport.')
+  if (audienceType === 'TEAM') {
+    const team = data.sportsTeams.find((entry) => entry.id === audienceId && entry.status === 'ACTIVE')
+    if (!team || team.sportId !== sport?.id) throw sportsError('Choose an active team for the event sport.')
+  }
   return {
     ...(partial && input.name === undefined ? {} : { name }),
     ...(partial && input.sportId === undefined && input.sportName === undefined ? {} : { sportId: sport.id, sportName: sport.title }),
     ...(partial && input.date === undefined ? {} : { date }),
-    ...(partial && input.time === undefined ? {} : { time }),
+    ...(partial && input.time === undefined && input.startTime === undefined ? {} : { startTime }),
+    ...(partial && input.endTime === undefined && input.startTime === undefined && input.time === undefined ? {} : { endTime }),
     ...(partial && input.registrationDeadline === undefined ? {} : { registrationDeadline }),
     ...(partial && input.venue === undefined ? {} : { venue }),
     ...(partial && input.maxParticipants === undefined ? {} : { maxParticipants }),
     ...(partial && input.eligibility === undefined ? {} : { eligibility }),
     ...(partial && input.eligibleDepartments === undefined ? {} : { eligibleDepartments }),
     ...(partial && input.description === undefined ? {} : { description }),
+    ...(partial && input.instructions === undefined ? {} : { instructions }),
+    ...(partial && input.eventImage === undefined ? {} : { eventImage }),
     ...(partial && input.kind === undefined ? {} : { kind }),
     ...(partial && input.status === undefined ? {} : { status }),
+    ...(partial && input.audienceType === undefined ? {} : { audienceType }),
+    ...(partial && input.audienceId === undefined && audienceType !== 'SPORT' ? {} : { audienceId }),
+  }
+}
+
+function validateSportsPoster(value) {
+  if (!value) return ''
+  if (typeof value !== 'string' || value.length > 1_400_000) throw sportsError('Event posters must be under 1 MB.')
+  if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value) || Buffer.from(value.split(',')[1], 'base64').length > 1_000_000) {
+    throw sportsError('Upload a PNG, JPEG, or WebP event poster under 1 MB.')
+  }
+  return value
+}
+
+function sportsEventStatus(event) {
+  return normalizeSportsEventStatus(event.status)
+}
+
+function isPublicSportsEvent(event) {
+  return SPORTS_EVENT_VISIBLE_STATUSES.includes(sportsEventStatus(event))
+}
+
+function publicSportsEvent(event) {
+  const record = { ...event }
+  delete record.time
+  const startTime = normalizeSportsTime(event.startTime || event.time)
+  const endTime = normalizeSportsTime(event.endTime)
+  return {
+    ...record, status: sportsEventStatus(event),
+    eligibleDepartments: Array.isArray(event.eligibleDepartments) ? event.eligibleDepartments : [],
+    startTime: startTime || event.startTime || event.time || '',
+    endTime: endTime || event.endTime || '',
+  }
+}
+
+function sportsEventStartsAt(event) {
+  const time = normalizeSportsTime(event.startTime || event.time) || '23:59'
+  return Date.parse(`${event.date}T${time}:00`)
+}
+
+function notifySportsEventAudience(data, event, addNotification) {
+  const audienceType = event.audienceType || 'SPORT'
+  const audienceId = event.audienceId || (audienceType === 'SPORT' ? event.sportId : event.id)
+  const recipientIds = [...new Set(sportsNoticeRecipients({ audienceType, audienceId }, data))]
+    .filter((id) => {
+      const recipient = data.users.find((candidate) => candidate.id === id && candidate.active)
+      return recipient && validEventEligibility(event, recipient)
+    })
+  event.publishedAt ||= new Date().toISOString()
+  for (const recipientUserId of recipientIds) {
+    const alreadyNotified = (data.notifications || []).some((notification) =>
+      notification.recipientUserId === recipientUserId && notification.referenceId === event.id && notification.type === 'SPORTS_EVENT')
+    if (alreadyNotified) continue
+    addNotification(data, {
+      recipientUserId, title: `Sports Event: ${event.name}`,
+      message: `${event.sportName} · ${event.date} · ${formatSportsTime(event.startTime || event.time)} · ${event.venue}`,
+      referenceId: event.id, target: 'sports', type: 'SPORTS_EVENT',
+    })
   }
 }
 
@@ -2850,7 +3475,7 @@ function sportsNoticeRecipients(notice, data) {
 }
 
 function activeSportsUsers(data) {
-  return data.users.filter((candidate) => candidate.active && [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(candidate.role))
+  return data.users.filter((candidate) => candidate.active && [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(candidate.role))
 }
 
 function activeSportsUser(data, userId) {

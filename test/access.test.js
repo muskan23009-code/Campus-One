@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { APP_ROLES, ROLE_START_PAGES, canSeePage } from '../src/auth/access.js'
-import { navigationGroups } from '../src/data/campusData.js'
+import { campusPlaces, moduleDetails, navigationGroups } from '../src/data/campusData.js'
+import { canAccess } from '../server/policy.js'
 
 test('Complaint & Issue Tracker stays available to existing roles and not Canteen Staff', () => {
   const complaintItems = navigationGroups.flatMap((group) => group.items).filter((item) => item.id === 'complaints')
@@ -24,7 +25,7 @@ test('Lost & Found is a dedicated main section visible to all five roles', () =>
 
 test('student routes exclude every management page', () => {
   const student = { id: 'PM-S1047', name: 'Student Example', role: APP_ROLES.STUDENT, modules: [] }
-  for (const page of ['overview', 'copilot', 'notices', 'food', 'navigation', 'directory', 'complaints', 'sports', 'events', 'library', 'hostel', 'transport', 'lost-found', 'emergency']) {
+  for (const page of ['overview', 'copilot', 'notices', 'food', 'navigation', 'directory', 'complaints', 'sports', 'events', 'hostel', 'lost-found', 'emergency']) {
     assert.equal(canSeePage(student, page), true, `Student should be able to access ${page}`)
   }
   for (const page of ['analytics', 'users', 'campus-management', 'sports-management']) {
@@ -52,7 +53,7 @@ test('sports captain receives complaint management and sports tools but not admi
   assert.equal(canSeePage(captain, 'sports'), true)
   assert.equal(canSeePage(captain, 'complaints'), true)
   assert.equal(canSeePage(captain, 'lost-found'), true)
-  for (const page of ['canteen', 'copilot', 'library', 'hostel', 'transport', 'directory', 'emergency']) {
+  for (const page of ['canteen', 'copilot', 'hostel', 'directory', 'emergency']) {
     assert.equal(canSeePage(captain, page), true, `Sports Captain should have student access to ${page}`)
   }
   for (const page of ['users', 'analytics', 'campus-management']) {
@@ -80,7 +81,7 @@ test('Administration can open Canteen as a customer, without staff controls', ()
 
 test('administration receives every management capability', () => {
   const administrator = { id: 'PM-AD01', name: 'Admin Example', role: APP_ROLES.ADMIN, modules: [] }
-  for (const page of ['overview', 'users', 'analytics', 'campus-management', 'sports-management', 'complaints', 'transport', 'emergency', 'canteen']) {
+  for (const page of ['overview', 'users', 'analytics', 'campus-management', 'sports-management', 'complaints', 'emergency', 'canteen']) {
     assert.equal(canSeePage(administrator, page), true, `Administration should access ${page}`)
   }
   assert.equal(canSeePage(administrator, 'lost-found'), true)
@@ -91,5 +92,21 @@ test('Canteen Staff can access only the Canteen dashboard', () => {
   assert.equal(canSeePage(canteenStaff, 'canteen'), true)
   for (const page of ['overview', 'profile', 'copilot', 'food', 'complaints', 'lost-found', 'sports-management', 'analytics', 'users', 'campus-management']) {
     assert.equal(canSeePage(canteenStaff, page), false, `Canteen Staff must not access ${page}`)
+  }
+})
+
+test('Library and Transport have no navigation, dashboard, route, or granted access', () => {
+  const items = navigationGroups.flatMap((group) => group.items)
+  for (const page of ['library', 'transport']) {
+    assert.equal(items.some((item) => item.id === page), false)
+    assert.equal(Object.hasOwn(moduleDetails, page), false)
+    assert.equal(canSeePage({ id: 'staff', name: 'Staff', role: APP_ROLES.STAFF, modules: [page] }, page), false)
+    assert.equal(canAccess({ id: 'staff', name: 'Staff', role: 'Staff', modules: [page] }, page), false)
+    assert.equal(campusPlaces.some((place) => place.name.toLowerCase().includes(page)), false)
+  }
+  for (const role of Object.values(APP_ROLES)) {
+    for (const page of ['library', 'transport']) {
+      assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [page] }, page), false, `${role} must not access ${page}`)
+    }
   }
 })

@@ -68,7 +68,7 @@ test('the full Vite and auth server serves a Codespaces forwarded host', async (
     const setup = JSON.parse(response.text)
     assert.equal(setup.setupRequired, true)
     assert.equal(setup.adminAccessConfigured, Boolean(process.env.CAMPUS_ADMIN_ACCESS_CODE && process.env.CAMPUS_ADMIN_ACCESS_CODE.length >= 5))
-    assert.ok(setup.departments.includes('Computer Science'))
+    assert.deepEqual(setup.departments, ['B.Tech', 'Law', 'Pharmacy', 'Diploma', 'Management'])
 
     response = await forwardedRequest(`${url}/api/registrations`, {
       host,
