@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { APP_ROLES, ROLE_START_PAGES, canSeePage } from '../src/auth/access.js'
+<<<<<<< HEAD
 import { campusPlaces, moduleDetails, navigationGroups } from '../src/data/campusData.js'
 import { canAccess } from '../server/policy.js'
+=======
+import { moduleDetails, navigationGroups } from '../src/data/campusData.js'
+import { canAccess as canAccessCampusModule, DEFAULT_CAMPUS_DATA, MANAGEMENT_COLLECTIONS } from '../server/policy.js'
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
 
 test('Complaint & Issue Tracker stays available to existing roles and not Canteen Staff', () => {
   const complaintItems = navigationGroups.flatMap((group) => group.items).filter((item) => item.id === 'complaints')
@@ -33,6 +38,32 @@ test('student routes exclude every management page', () => {
   }
 })
 
+test('Hostel is limited to Students and Administration across routes and APIs', () => {
+  const eligibleRoles = [APP_ROLES.STUDENT, APP_ROLES.ADMIN]
+  for (const role of Object.values(APP_ROLES)) {
+    const user = { id: 'test-user', name: 'Test User', role, modules: ['hostel'] }
+    const expected = eligibleRoles.includes(role)
+    assert.equal(canSeePage(user, 'hostel'), expected, `${role} route access`)
+    assert.equal(canAccessCampusModule(user, 'hostel'), expected, `${role} API access`)
+  }
+})
+
+test('Transport and Library routes, permissions, and campus collections are removed', () => {
+  const removedModules = ['transport', 'library']
+  const navigationItems = navigationGroups.flatMap((group) => group.items)
+  for (const moduleId of removedModules) {
+    assert.equal(navigationItems.some((item) => item.id === moduleId), false, `${moduleId} must not appear in navigation`)
+    assert.equal(Object.hasOwn(moduleDetails, moduleId), false, `${moduleId} must not have a module page`)
+    assert.equal(MANAGEMENT_COLLECTIONS.includes(moduleId), false, `${moduleId} must not expose a campus collection`)
+    assert.equal(Object.hasOwn(DEFAULT_CAMPUS_DATA, moduleId), false, `${moduleId} must not have a default campus collection`)
+    for (const role of Object.values(APP_ROLES)) {
+      const user = { id: 'test-user', name: 'Test User', role, modules: removedModules }
+      assert.equal(canSeePage(user, moduleId), false, `${role} must not access ${moduleId}`)
+      assert.equal(canAccessCampusModule(user, moduleId), false, `${role} must not access the ${moduleId} campus API`)
+    }
+  }
+})
+
 test('staff only receive assigned modules and no administration controls', () => {
   const staff = { id: 'PM-ST12', name: 'Staff Example', role: APP_ROLES.STAFF, modules: ['copilot'] }
   assert.equal(canSeePage(staff, 'complaints'), true)
@@ -53,7 +84,11 @@ test('sports captain receives complaint management and sports tools but not admi
   assert.equal(canSeePage(captain, 'sports'), true)
   assert.equal(canSeePage(captain, 'complaints'), true)
   assert.equal(canSeePage(captain, 'lost-found'), true)
+<<<<<<< HEAD
   for (const page of ['canteen', 'copilot', 'hostel', 'directory', 'emergency']) {
+=======
+  for (const page of ['canteen', 'copilot', 'directory', 'emergency']) {
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     assert.equal(canSeePage(captain, page), true, `Sports Captain should have student access to ${page}`)
   }
   for (const page of ['users', 'analytics', 'campus-management']) {
@@ -77,6 +112,13 @@ test('HOD receives only the department-scoped review and roster routes', () => {
 test('Administration can open Canteen as a customer, without staff controls', () => {
   const administrator = { id: 'PM-AD01', name: 'Admin Example', role: APP_ROLES.ADMIN, modules: [] }
   assert.equal(canSeePage(administrator, 'canteen'), true)
+})
+
+test('Canteen route remains available to customer roles', () => {
+  const customerRoles = [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN]
+  for (const role of customerRoles) {
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [] }, 'canteen'), true, `${role} can access the Food & Dine In Canteen section`)
+  }
 })
 
 test('administration receives every management capability', () => {

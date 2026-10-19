@@ -9,7 +9,7 @@ import {
 import {
   CANTEEN_CATEGORIES, CANTEEN_MENU, DEFAULT_CAMPUS_DATA, DEFAULT_SPORTS_DATA, DEPARTMENTS, LEGACY_DEPARTMENTS,
   INITIAL_CANTEEN_MENU,
-  MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, STAFF_MODULES,
+  MANAGEMENT_COLLECTIONS, ROLE_VALUES, ROLES, SPORTS_DEPARTMENTS, STAFF_MODULES,
   STUDENT_MODULES, USER_ID_FORMATS, canAccess, modulesForUser,
 } from './policy.js'
 import {
@@ -28,6 +28,7 @@ const COMPLAINT_CATEGORIES = Object.freeze([
   'Sports', 'Transport', 'Infrastructure', 'Security', 'IT/Technical', 'Other',
 ])
 const COMPLAINT_STATUSES = Object.freeze(['SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'])
+const MESS_MEALS = Object.freeze(['Breakfast', 'Brunch', 'Lunch', 'Dinner'])
 const LOST_FOUND_CATEGORIES = Object.freeze([
   'ID Card', 'Mobile/Device', 'Books/Notes', 'Wallet/Bag', 'Keys', 'Clothing',
   'Accessories', 'Sports Equipment', 'Other',
@@ -37,11 +38,17 @@ const LOST_FOUND_STATUSES = Object.freeze([
   'LOST', 'FOUND', 'MATCHED', 'CLAIM_REQUESTED', 'CLAIM_VERIFIED', 'RETURNED', 'CLOSED',
 ])
 const LOST_FOUND_PHOTO_BYTES_LIMIT = 1_000_000
+const HOSTEL_MAINTENANCE_CATEGORIES = Object.freeze(['Electrical', 'Plumbing', 'Furniture', 'Other'])
+const HOSTEL_MAINTENANCE_STATUSES = Object.freeze(['SUBMITTED', 'IN_PROGRESS', 'RESOLVED'])
+const HOSTEL_NAMES = Object.freeze(['B1', 'B2', 'B3', 'B4', 'G1', 'G2'])
+const HOSTEL_ROOM_TYPES = Object.freeze(['Single', 'Double', 'Triple', '4 Sharing', 'Shared'])
+const HOSTEL_ROOMMATE_LIMITS = Object.freeze({ Single: 0, Double: 1, Triple: 2, '4 Sharing': 3, Shared: 20 })
+const HOSTEL_ROOM_COOLING_OPTIONS = Object.freeze(['AC', 'Non-AC'])
 const PASSWORD_ATTEMPT_LIMIT = 10
 const PASSWORD_ATTEMPT_WINDOW = 15 * 60 * 1000
 const CAMPUS_MODULES = {
-  notices: 'notices', food: 'food', events: 'events', library: 'library',
-  hostel: 'hostel', transport: 'transport', directory: 'directory', emergency: 'emergency',
+  notices: 'notices', food: 'food', events: 'events',
+  directory: 'directory', emergency: 'emergency',
 }
 const DUMMY_CREDENTIALS = await hashPassword(randomUUID())
 const MIME_TYPES = {
@@ -80,6 +87,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const cookieHeader = request.headers.cookie || ''
     const part = cookieHeader.split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`))
     return part ? part.slice(name.length + 1) : ''
+  }
+
+  function safeDecodeURIComponent(value) {
+    if (typeof value !== 'string') return ''
+    try { return decodeURIComponent(value) } catch { return '' }
   }
 
   async function body(request) {
@@ -234,10 +246,17 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
   function assertRegistrationUnique(data, fields) {
     data.registrationRequests ??= []
-    if (data.users.some((user) => user.email === fields.email) || data.registrationRequests.some((application) => application.fields.email === fields.email)) {
+    const normalizedEmail = typeof fields.email === 'string' ? fields.email.toLowerCase() : ''
+    const normalizedRollNumber = typeof fields.rollNumber === 'string' ? fields.rollNumber.toLowerCase() : ''
+    const activeUsers = data.users.filter((user) => user.active !== false)
+    const pendingApplications = data.registrationRequests.filter((application) => application.status === 'Pending')
+
+    if (normalizedEmail && (activeUsers.some((user) => (user.email || '').toLowerCase() === normalizedEmail)
+      || pendingApplications.some((application) => (application.fields?.email || '').toLowerCase() === normalizedEmail))) {
       throw Object.assign(new Error('An account or application already uses this email address.'), { status: 409 })
     }
-    if (fields.rollNumber && (data.users.some((user) => user.role === ROLES.STUDENT && (user.rollNumber || '').toLowerCase() === fields.rollNumber.toLowerCase()) || data.registrationRequests.some((application) => application.role === ROLES.STUDENT && application.status !== 'Rejected' && application.fields.rollNumber.toLowerCase() === fields.rollNumber.toLowerCase()))) {
+
+    if (normalizedRollNumber && pendingApplications.some((application) => application.role === ROLES.STUDENT && (application.fields?.rollNumber || '').toLowerCase() === normalizedRollNumber)) {
       throw Object.assign(new Error('This roll/enrollment number is already registered or awaiting review.'), { status: 409 })
     }
   }
@@ -475,7 +494,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         return json(response, 200, { department: user.department, requests: requests.map(publicRegistration) })
       }
       if (hodQueue[1] === 'requests' && hodQueue[2] && request.method === 'GET') {
+<<<<<<< HEAD
         const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && sameDepartment(candidate.fields.department, user.department))
+=======
+        const application = data.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(hodQueue[2]) && candidate.role === ROLES.STUDENT && candidate.fields.department === user.department)
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         if (!application) return reject(response, 404, 'This student request is not in your department.')
         return json(response, 200, { request: publicRegistration(application) })
       }
@@ -483,7 +506,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         const input = await body(request)
         if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Accept or Reject.')
         const result = await store.transact(async (current) => {
-          const application = current.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(hodQueue[2]))
+          const application = current.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(hodQueue[2]))
           if (!application || application.role !== ROLES.STUDENT || application.fields.department !== user.department) throw Object.assign(new Error('This student request is not in your department.'), { status: 404 })
           if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
           application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
@@ -531,7 +554,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (!user) return reject(response, 401, 'Sign in to continue.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
       const data = await store.read()
-      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role) && ['Pending', 'Approved', 'Accepted', 'Rejected'].includes(application.status))
+      const requests = data.registrationRequests.filter((application) => [ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role))
       return json(response, 200, { requests: requests.map(publicRegistration) })
     }
 
@@ -543,7 +566,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (!['Accepted', 'Rejected'].includes(input.status)) return reject(response, 400, 'Choose Allow/Accept or Reject.')
       const result = await store.transact(async (data) => {
-        const application = data.registrationRequests.find((candidate) => candidate.id === decodeURIComponent(adminRequest[1]))
+        const application = data.registrationRequests.find((candidate) => candidate.id === safeDecodeURIComponent(adminRequest[1]))
         if (!application || ![ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.CANTEEN].includes(application.role)) throw Object.assign(new Error('This Administration request was not found.'), { status: 404 })
         if (application.status !== 'Pending') throw Object.assign(new Error('This request has already been reviewed.'), { status: 409 })
         application.status = input.status === 'Accepted' ? 'Approved' : 'Rejected'
@@ -634,7 +657,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         deliverDueNoticeNotifications(current)
         return current
       })
-      const notifications = (data.notifications || []).filter((notification) => notification.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || notification.target === 'canteen')).slice(0, 100)
+      const notifications = (data.notifications || [])
+        .filter((notification) => notification.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || notification.target === 'canteen'))
+        .slice(0, 100)
       return json(response, 200, { notifications: notifications.map(publicNotification), unreadCount: notifications.filter((notification) => !notification.readAt).length })
     }
 
@@ -653,7 +678,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const notificationRoute = pathname.match(/^\/api\/notifications\/([^/]+)$/)
     if (notificationRoute && request.method === 'PATCH') {
       const updated = await store.transact((data) => {
-        const notification = (data.notifications || []).find((item) => item.id === decodeURIComponent(notificationRoute[1]) && item.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || item.target === 'canteen'))
+        const notification = (data.notifications || []).find((item) => item.id === safeDecodeURIComponent(notificationRoute[1]) && item.recipientUserId === user.id && (user.role !== ROLES.CANTEEN || item.target === 'canteen'))
         if (!notification) throw Object.assign(new Error('Notification not found.'), { status: 404 })
         notification.readAt ||= new Date().toISOString()
         return notification
@@ -916,7 +941,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const noticeReadRoute = pathname.match(/^\/api\/notices\/([^/]+)\/read$/)
     if (noticeReadRoute && request.method === 'POST') {
-      const noticeId = decodeURIComponent(noticeReadRoute[1])
+      const noticeId = safeDecodeURIComponent(noticeReadRoute[1])
       const updated = await store.transact((data) => {
         const notice = campusNotices(data).find((entry) => entry.id === noticeId)
         if (!notice || !notice.recipientIds?.includes(user.id) && notice.createdBy !== user.id) throw Object.assign(new Error('Notice not found.'), { status: 404 })
@@ -966,7 +991,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         deliverDueNoticeNotifications(current)
         return current
       })
-      const notice = campusNotices(data).find((entry) => entry.id === decodeURIComponent(noticeDetailsRoute[1]) &&
+      const notice = campusNotices(data).find((entry) => entry.id === safeDecodeURIComponent(noticeDetailsRoute[1]) &&
         (entry.recipientIds?.includes(user.id) || entry.createdBy === user.id))
       if (!notice || Date.parse(notice.publishAt || notice.createdAt) > Date.now() || notice.expiresAt && Date.parse(notice.expiresAt) < Date.now()) return reject(response, 404, 'Notice not found.')
       const notification = (data.notifications || []).find((entry) => entry.recipientUserId === user.id && entry.referenceId === notice.id && entry.type === 'CAMPUS_NOTICE')
@@ -1053,7 +1078,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (user.role !== ROLES.CANTEEN) return reject(response, 403, 'Canteen Staff access is required to manage the menu.')
       const patch = validateCanteenItem(await body(request))
       const item = await store.transact((data) => {
-        const existing = (data.canteenMenu || []).find((candidate) => candidate.id === decodeURIComponent(canteenMenuRoute[1]))
+        const existing = (data.canteenMenu || []).find((candidate) => candidate.id === safeDecodeURIComponent(canteenMenuRoute[1]))
         if (!existing) throw Object.assign(new Error('Canteen menu item not found.'), { status: 404 })
         Object.assign(existing, patch, { updatedAt: new Date().toISOString() })
         return existing
@@ -1115,7 +1140,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       const transitions = { PENDING: ['ACCEPTED', 'REJECTED'], ACCEPTED: ['PREPARING'], PREPARING: ['READY'], READY: ['COMPLETED'] }
       const result = await store.transact((data) => {
-        const order = (data.canteenOrders || []).find((candidate) => candidate.id === decodeURIComponent(canteenOrderRoute[1]))
+        const order = (data.canteenOrders || []).find((candidate) => candidate.id === safeDecodeURIComponent(canteenOrderRoute[1]))
         if (!order) throw Object.assign(new Error('Canteen order not found.'), { status: 404 })
         if (!transitions[order.status]?.includes(input.status)) throw Object.assign(new Error('That order status transition is not allowed.'), { status: 409 })
         const now = new Date().toISOString()
@@ -1127,6 +1152,19 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         return order
       })
       return json(response, 200, { order: publicCanteenOrder(result) })
+    }
+
+    if (pathname === '/api/mess' && request.method === 'GET') {
+      if (!canAccess(user, 'food')) return reject(response, 403, 'Your role cannot access College Mess information.')
+      const data = await store.read()
+      return json(response, 200, { settings: normalizeMessSettings(data.messSettings) })
+    }
+
+    if (pathname === '/api/mess/settings' && request.method === 'PATCH') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage College Mess settings.')
+      const settings = validateMessSettings(await body(request))
+      await store.transact((data) => { data.messSettings = settings })
+      return json(response, 200, { settings })
     }
 
     if (pathname === '/api/food/orders' && request.method === 'GET') {
@@ -1165,7 +1203,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const userRoute = pathname.match(/^\/api\/users\/([^/]+)(?:\/(reset-password))?$/)
     if (userRoute && request.method === 'PATCH') {
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
-      const targetId = decodeURIComponent(userRoute[1])
+      const targetId = safeDecodeURIComponent(userRoute[1])
       const input = await body(request)
       if (input.role !== undefined) return reject(response, 400, 'Campus roles cannot be changed by editing an account; review a pending access request instead.')
       const updated = await store.transact((data) => {
@@ -1195,7 +1233,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     if (userRoute && !userRoute[2] && request.method === 'DELETE') {
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
-      const targetId = decodeURIComponent(userRoute[1])
+      const targetId = safeDecodeURIComponent(userRoute[1])
       const deleted = await store.transact((data) => {
         const targetIndex = data.users.findIndex((candidate) => candidate.id === targetId)
         if (targetIndex < 0) throw Object.assign(new Error('User not found.'), { status: 404 })
@@ -1214,23 +1252,211 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     if (userRoute && userRoute[2] === 'reset-password') return reject(response, 410, 'Users change their own password through their campus account.')
 
+    const hostelRoute = pathname.match(/^\/api\/hostel(?:\/([^/]+))?(?:\/([^/]+))?$/)
+    if (hostelRoute) {
+      if (!canAccess(user, 'hostel')) return reject(response, 403, 'Your role cannot access Hostel services.')
+      const [, resource, resourceId] = hostelRoute
+
+      if (!resource && request.method === 'GET') {
+        const data = await store.read()
+        if (user.role === ROLES.ADMIN) {
+          const students = data.users.filter((candidate) => candidate.role === ROLES.STUDENT && candidate.active)
+          const studentById = new Map(students.map((student) => [student.id, student]))
+          const allotments = (data.hostelAllotments || []).map((allotment) => ({
+            ...publicHostelAllotment(allotment),
+            studentName: studentById.get(allotment.studentId)?.name || 'Inactive student',
+          }))
+          const residents = allotments
+            .filter((allotment) => allotment.status === 'ALLOTTED')
+            .map((allotment) => ({
+              studentId: allotment.studentId,
+              name: allotment.studentName,
+              department: studentById.get(allotment.studentId)?.department || '',
+              hostelName: allotment.hostelName,
+              block: allotment.block,
+              floor: allotment.floor,
+              roomNumber: allotment.roomNumber,
+            }))
+          const hostelDetails = (data.hostelDetails || []).map((entry) => ({
+            ...publicHostelDetails(entry),
+            studentName: studentById.get(entry.studentId)?.name || 'Inactive student',
+          }))
+          return json(response, 200, {
+            rooms: (data.hostelRooms || []).map(publicHostelRoom),
+            allotments,
+            residents,
+            hostelDetails,
+            maintenance: (data.hostelMaintenance || []).map((requestEntry) => ({
+              ...publicHostelMaintenance(requestEntry),
+              studentName: studentById.get(requestEntry.studentId)?.name || 'Inactive student',
+            })),
+            students: students.map(({ id, name, department }) => ({ id, name, department: department || '' })),
+          })
+        }
+        return json(response, 200, studentHostelView(data, user))
+      }
+
+      if (resource === 'details' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit their own Hostel details.')
+        const details = validateHostelDetails(await body(request))
+        const saved = await store.transact((data) => {
+          data.hostelDetails ??= []
+          const existing = data.hostelDetails.find((entry) => entry.studentId === user.id)
+          const now = new Date().toISOString()
+          if (existing) {
+            Object.assign(existing, details, { updatedAt: now })
+            return existing
+          }
+          const created = { ...details, studentId: user.id, createdAt: now, updatedAt: now }
+          data.hostelDetails.push(created)
+          return created
+        })
+        return json(response, 200, { hostelDetails: publicHostelDetails(saved) })
+      }
+
+      const hostelDetailsRoute = resource === 'details' && resourceId
+      if (hostelDetailsRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage Hostel details.')
+        const studentId = safeDecodeURIComponent(resourceId)
+        const details = validateHostelDetails(await body(request))
+        const saved = await store.transact((data) => {
+          data.hostelDetails ??= []
+          const existing = data.hostelDetails.find((entry) => entry.studentId === studentId)
+          if (!existing) throw Object.assign(new Error('Hostel details not found for this student.'), { status: 404 })
+          Object.assign(existing, details, { updatedAt: new Date().toISOString() })
+          return existing
+        })
+        const student = (await store.read()).users.find((candidate) => candidate.id === studentId)
+        return json(response, 200, {
+          hostelDetails: { ...publicHostelDetails(saved), studentName: student?.name || 'Inactive student' },
+        })
+      }
+
+      if (resource === 'rooms' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel rooms.')
+        const room = validateHostelRoom(await body(request))
+        const created = await store.transact((data) => {
+          data.hostelRooms ??= []
+          if (data.hostelRooms.some((entry) => sameHostelRoom(entry, room))) {
+            throw Object.assign(new Error('A room with this hostel, block, floor, and room number already exists.'), { status: 409 })
+          }
+          room.id = randomUUID()
+          room.createdAt = new Date().toISOString()
+          data.hostelRooms.unshift(room)
+          return room
+        })
+        return json(response, 201, { room: publicHostelRoom(created) })
+      }
+
+      const roomRoute = resource === 'rooms' && resourceId
+      if (roomRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel rooms.')
+        const patch = validateHostelRoom(await body(request))
+        const updated = await store.transact((data) => {
+          data.hostelRooms ??= []
+          const room = data.hostelRooms.find((entry) => entry.id === safeDecodeURIComponent(resourceId))
+          if (!room) throw Object.assign(new Error('Hostel room not found.'), { status: 404 })
+          if (data.hostelRooms.some((entry) => entry.id !== room.id && sameHostelRoom(entry, patch))) {
+            throw Object.assign(new Error('A room with this hostel, block, floor, and room number already exists.'), { status: 409 })
+          }
+          const occupancy = (data.hostelAllotments || []).filter((entry) => entry.roomId === room.id && entry.status === 'ALLOTTED').length
+          if (patch.capacity < occupancy) throw Object.assign(new Error('Room capacity cannot be lower than its current occupancy.'), { status: 400 })
+          Object.assign(room, patch, { updatedAt: new Date().toISOString() })
+          return room
+        })
+        return json(response, 200, { room: publicHostelRoom(updated) })
+      }
+
+      if (resource === 'allotments' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage hostel allotments.')
+        const input = await body(request)
+        if (hasHostelBedFields(input)) return reject(response, 400, 'Bed and seat numbers are not part of hostel allotments.')
+        const studentId = safeText(input.studentId, 64)
+        const roomId = safeText(input.roomId, 64)
+        if (!studentId || !roomId) return reject(response, 400, 'Choose a student and a hostel room.')
+        const created = await store.transact((data) => {
+          data.hostelRooms ??= []
+          data.hostelAllotments ??= []
+          const student = data.users.find((candidate) => candidate.id === studentId && candidate.role === ROLES.STUDENT && candidate.active)
+          if (!student) throw Object.assign(new Error('Choose an active student account.'), { status: 400 })
+          const room = data.hostelRooms.find((candidate) => candidate.id === roomId)
+          if (!room) throw Object.assign(new Error('Choose a valid hostel room.'), { status: 400 })
+          const previous = data.hostelAllotments.find((entry) => entry.studentId === student.id && entry.status === 'ALLOTTED')
+          if (previous?.roomId === room.id) throw Object.assign(new Error('This student is already allotted to that room.'), { status: 409 })
+          const occupancy = data.hostelAllotments.filter((entry) => entry.roomId === room.id && entry.status === 'ALLOTTED').length
+          if (occupancy >= room.capacity) throw Object.assign(new Error('This room is at capacity.'), { status: 409 })
+          const now = new Date().toISOString()
+          if (previous) {
+            previous.status = 'TRANSFERRED'
+            previous.endedAt = now
+          }
+          const allotment = {
+            id: randomUUID(),
+            studentId: student.id,
+            roomId: room.id,
+            hostelName: room.hostelName,
+            block: room.block,
+            floor: room.floor,
+            roomNumber: room.roomNumber,
+            status: 'ALLOTTED',
+            createdAt: now,
+            endedAt: '',
+          }
+          data.hostelAllotments.unshift(allotment)
+          return { ...allotment, studentName: student.name }
+        })
+        return json(response, 201, { allotment: { ...publicHostelAllotment(created), studentName: created.studentName } })
+      }
+
+      if (resource === 'maintenance' && !resourceId && request.method === 'POST') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit hostel maintenance requests.')
+        const requestEntry = validateHostelMaintenance(await body(request), user)
+        const created = await store.transact((data) => {
+          data.hostelMaintenance ??= []
+          requestEntry.id = randomUUID()
+          requestEntry.createdAt = new Date().toISOString()
+          data.hostelMaintenance.unshift(requestEntry)
+          return requestEntry
+        })
+        return json(response, 201, { request: publicHostelMaintenance(created) })
+      }
+
+      const maintenanceRoute = resource === 'maintenance' && resourceId
+      if (maintenanceRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to update hostel maintenance requests.')
+        const input = await body(request)
+        if (!HOSTEL_MAINTENANCE_STATUSES.includes(input.status)) return reject(response, 400, 'Choose a valid maintenance request status.')
+        const updated = await store.transact((data) => {
+          data.hostelMaintenance ??= []
+          const entry = data.hostelMaintenance.find((candidate) => candidate.id === safeDecodeURIComponent(resourceId))
+          if (!entry) throw Object.assign(new Error('Hostel maintenance request not found.'), { status: 404 })
+          entry.status = input.status
+          entry.updatedAt = new Date().toISOString()
+          return entry
+        })
+        return json(response, 200, { request: publicHostelMaintenance(updated) })
+      }
+
+      return reject(response, 404, 'Hostel service route not found.')
+    }
+
     const campusRoute = pathname.match(/^\/api\/campus\/([^/]+)(?:\/([^/]+))?$/)
     if (campusRoute) {
-      const collection = decodeURIComponent(campusRoute[1])
+      const collection = safeDecodeURIComponent(campusRoute[1])
       if (!MANAGEMENT_COLLECTIONS.includes(collection)) return reject(response, 404, 'Campus collection not found.')
       if (!canAccess(user, CAMPUS_MODULES[collection])) return reject(response, 403, 'Your role cannot access this campus service.')
       if (request.method === 'GET') {
         const data = await store.read()
         const records = data.campus?.[collection] ?? DEFAULT_CAMPUS_DATA[collection] ?? []
         const visible = records.filter((record) => record.active && (collection !== 'notices' || !record.recipientIds || record.recipientIds.includes(user.id)))
-        return json(response, 200, { records: visible.map((record) => collection === 'notices' ? publicCampusNotice(record, user.id) : record) })
+        return json(response, 200, { records: visible.map((record) => collection === 'notices' ? publicCampusNotice(record, user.id) : collection === 'food' ? publicCampusFoodRecord(record) : record) })
       }
       if (collection === 'notices') return reject(response, 403, 'Use the role-scoped Notices & Announcements system to issue notices.')
       if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to manage campus data.')
       if (request.method === 'POST' && !campusRoute[2]) {
         const input = await body(request)
+        if (collection === 'food' && hasRemovedCrowdFields(input)) return reject(response, 400, 'Crowd estimates are no longer supported in campus food records.')
         const record = validateRecord(input)
-        if (collection === 'food' && hasManualCrowd(input)) Object.assign(record, validateManualCrowd(input))
         const created = await store.transact((data) => {
           const records = campusRecords(data, collection)
           record.id = randomUUID()
@@ -1238,29 +1464,23 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           if (records.length > 200) throw Object.assign(new Error('This campus collection is full.'), { status: 400 })
           return record
         })
-        return json(response, 201, { record: created })
+        return json(response, 201, { record: collection === 'food' ? publicCampusFoodRecord(created) : created })
       }
       if (campusRoute[2] && request.method === 'PATCH') {
         const input = await body(request)
+        if (collection === 'food' && hasRemovedCrowdFields(input)) return reject(response, 400, 'Crowd estimates are no longer supported in campus food records.')
         const patch = validateRecord(input)
-        if (collection === 'food' && hasManualCrowd(input)) Object.assign(patch, validateManualCrowd(input))
         const updated = await store.transact((data) => {
-          const record = campusRecords(data, collection).find((candidate) => candidate.id === decodeURIComponent(campusRoute[2]))
+          const record = campusRecords(data, collection).find((candidate) => candidate.id === safeDecodeURIComponent(campusRoute[2]))
           if (!record) throw Object.assign(new Error('Campus record not found.'), { status: 404 })
           record.title = patch.title
           record.description = patch.description
-          if (collection === 'food' && hasManualCrowd(input)) {
-            record.crowdLevel = patch.crowdLevel
-            record.occupancyPercent = patch.occupancyPercent
-            record.estimatedWaitMinutes = patch.estimatedWaitMinutes
-            record.crowdUpdatedAt = patch.crowdUpdatedAt
-          }
           return record
         })
-        return json(response, 200, { record: updated })
+        return json(response, 200, { record: collection === 'food' ? publicCampusFoodRecord(updated) : updated })
       }
       if (campusRoute[2] && request.method === 'DELETE') {
-        const id = decodeURIComponent(campusRoute[2])
+        const id = safeDecodeURIComponent(campusRoute[2])
         const found = await store.transact((data) => {
           const record = campusRecords(data, collection).find((candidate) => candidate.id === id)
           if (!record) return false
@@ -1358,7 +1578,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const lostFoundPhotoRoute = pathname.match(/^\/api\/lost-found\/([^/]+)\/photo$/)
     if (lostFoundPhotoRoute && request.method === 'GET') {
       const data = await store.read()
-      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundPhotoRoute[1]))
+      const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundPhotoRoute[1]))
       if (!report || !canViewLostFound(user, report) || !report.photo) return reject(response, 404, 'Lost-and-found photo not found.')
       let photo
       try { photo = await store.readLostFoundPhoto(report.photo.photoId, report.photo.mimeType) } catch (error) {
@@ -1383,7 +1603,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (details.length < 15) return reject(response, 400, 'Provide at least 15 characters of identifying details.')
       if (!/^[a-f\d-]{36}$/i.test(submissionKey)) return reject(response, 400, 'Refresh the claim form and submit again.')
       const updated = await store.transact((data) => {
-        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[1]))
         if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!canViewLostFound(user, report)) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (report.type !== 'FOUND' || report.reporterId === user.id || ['RETURNED', 'CLOSED', 'CLAIM_VERIFIED'].includes(report.status)) {
@@ -1420,10 +1640,10 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (!['VERIFIED', 'REJECTED'].includes(input.decision)) return reject(response, 400, 'Choose whether to verify or reject this claim.')
       const result = await store.transact((data) => {
-        const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[1]))
+        const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[1]))
         if (!report) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, report)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
-        const claim = (report.claimRequests || []).find((item) => item.id === decodeURIComponent(lostFoundClaimsRoute[2]))
+        const claim = (report.claimRequests || []).find((item) => item.id === safeDecodeURIComponent(lostFoundClaimsRoute[2]))
         if (!claim) throw Object.assign(new Error('Claim request not found.'), { status: 404 })
         if (claim.status !== 'PENDING' || report.status !== 'CLAIM_REQUESTED') throw Object.assign(new Error('This claim has already been reviewed.'), { status: 409 })
         const now = new Date().toISOString()
@@ -1465,7 +1685,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const message = safeText((await body(request)).message, 2000)
       if (message.length < 2) return reject(response, 400, 'Add an official note of at least two characters.')
       const report = await store.transact((data) => {
-        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundNoteRoute[1]))
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === safeDecodeURIComponent(lostFoundNoteRoute[1]))
         if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
         const now = new Date().toISOString()
@@ -1479,7 +1699,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const lostFoundReportRoute = pathname.match(/^\/api\/lost-found\/([^/]+)$/)
     if (lostFoundReportRoute && request.method === 'GET') {
       const data = await store.read()
-      const report = (data.lostFoundReports || []).find((item) => item.id === decodeURIComponent(lostFoundReportRoute[1]))
+      const report = (data.lostFoundReports || []).find((item) => item.id === safeDecodeURIComponent(lostFoundReportRoute[1]))
       if (!report || !canViewLostFound(user, report)) return reject(response, 404, 'Lost & Found report not found.')
       return json(response, 200, { report: publicLostFoundReport(report, user) })
     }
@@ -1489,7 +1709,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const input = await body(request)
       if (Object.keys(input).length !== 1 || !['RETURNED', 'CLOSED'].includes(input.status)) return reject(response, 400, 'Choose an allowed Lost & Found status update.')
       const report = await store.transact((data) => {
-        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === decodeURIComponent(lostFoundReportRoute[1]))
+        const item = (data.lostFoundReports || []).find((candidate) => candidate.id === safeDecodeURIComponent(lostFoundReportRoute[1]))
         if (!item) throw Object.assign(new Error('Lost & Found report not found.'), { status: 404 })
         if (!isLostFoundManager(user, item)) throw Object.assign(new Error('This report is outside your authorized management scope.'), { status: 403 })
         if (input.status === 'RETURNED' && item.status !== 'CLAIM_VERIFIED') throw Object.assign(new Error('Verify a claim before marking an item returned.'), { status: 409 })
@@ -1583,7 +1803,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const complaintPhotoRoute = pathname.match(/^\/api\/complaints\/([^/]+)\/photo$/)
     if (complaintPhotoRoute && request.method === 'GET') {
       const data = await store.read()
-      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintPhotoRoute[1]))
+      const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintPhotoRoute[1]))
       if (!record || !canViewComplaint(user, normalizeComplaint(record, data.users))) return reject(response, 404, 'Complaint photo not found.')
       const complaint = normalizeComplaint(record, data.users)
       if (!complaint.photo) return reject(response, 404, 'Complaint photo not found.')
@@ -1605,7 +1825,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const complaintRoute = pathname.match(/^\/api\/complaints\/([^/]+)(?:\/(notes))?$/)
     if (complaintRoute && request.method === 'GET') {
       const data = await store.read()
-      const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+      const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
       if (!record) return reject(response, 404, 'Complaint not found.')
       const complaint = normalizeComplaint(record, data.users)
       if (!canViewComplaint(user, complaint)) return reject(response, 404, 'Complaint not found.')
@@ -1617,7 +1837,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const message = safeText((await body(request)).message, 2000)
       if (message.length < 2) return reject(response, 400, 'Add an official update of at least two characters.')
       const updated = await store.transact((data) => {
-        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
         if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
         const complaint = normalizeComplaint(record, data.users)
         if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
@@ -1643,7 +1863,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       if (input.assignedTo !== undefined && user.role !== ROLES.ADMIN) return reject(response, 403, 'Only Administration can assign complaints.')
       if (input.assignedTo !== undefined && input.assignedTo !== null && typeof input.assignedTo !== 'string') return reject(response, 400, 'Choose a valid Staff assignment.')
       const updated = await store.transact((data) => {
-        const record = data.complaints.find((item) => item.id === decodeURIComponent(complaintRoute[1]))
+        const record = data.complaints.find((item) => item.id === safeDecodeURIComponent(complaintRoute[1]))
         if (!record) throw Object.assign(new Error('Complaint not found.'), { status: 404 })
         const complaint = normalizeComplaint(record, data.users)
         if (!canManageComplaint(user, complaint)) throw Object.assign(new Error('This complaint is outside your authorized scope.'), { status: 403 })
@@ -1691,15 +1911,23 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsManager = [ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentSportsRole = [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN].includes(user.role)
     const studentEventRegistrationPath = /^\/api\/sports\/events\/[^/]+\/register$/.test(pathname) && request.method === 'POST'
+<<<<<<< HEAD
     const publicSportsEventPath = /^\/api\/sports\/events\/[^/]+$/.test(pathname) && request.method === 'GET'
     const studentSportsApplicationPath = pathname === '/api/sports/applications' && request.method === 'POST'
+=======
+    const studentSportsMembershipApplicationPath = pathname === '/api/sports/membership-applications' && request.method === 'POST'
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     const sportsApplicationCancelPath = /^\/api\/sports\/applications\/[^/]+$/.test(pathname) && request.method === 'PATCH'
     const sportsManagementPath = pathname.startsWith('/api/sports/')
       && pathname !== '/api/sports/student'
       && !(pathname === '/api/sports/events' && request.method === 'GET')
       && !publicSportsEventPath
       && !studentEventRegistrationPath
+<<<<<<< HEAD
       && !studentSportsApplicationPath
+=======
+      && !studentSportsMembershipApplicationPath
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
       && !sportsApplicationCancelPath
     if (sportsManagementPath && !sportsManager) return reject(response, 403, 'Sports Captain or Administration access is required.')
 
@@ -1714,6 +1942,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const data = await readSportsData(store)
       const ownRegistrations = data.sportsRegistrations.filter((entry) => entry.studentId === user.id)
         .map((entry) => publicSportsRegistration(entry, data))
+      const ownMembershipApplications = data.sportsMembershipApplications.filter((entry) => entry.studentId === user.id)
+      const activeTeams = data.sportsTeams.filter((team) => team.status === 'ACTIVE' && sportFor(data, team.sportId))
       const participations = activeSportsParticipations(data, user.id)
       const sportIds = new Set(participations.map((entry) => entry.sportId))
       const authorizedTeams = data.sportsTeams.filter((team) => sportIds.has(team.sportId) && team.status === 'ACTIVE')
@@ -1721,6 +1951,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const noticeIds = new Set(data.sportsNotices.filter((notice) => notice.recipientIds?.includes(user.id)).map((notice) => notice.id))
       return json(response, 200, {
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
+<<<<<<< HEAD
         events: data.sportsEvents.filter(isPublicSportsEvent).map((entry) => ({
           ...publicSportsEvent(entry),
           registrationCount: data.sportsRegistrations.filter((registration) =>
@@ -1736,7 +1967,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
             && !ownRegistrations.some((registration) => registration.eventId === entry.id),
         })),
         sportsEventRegistrations: ownRegistrations.filter((entry) => entry.applicationType === 'SPORTS_EVENT'),
+=======
+        events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED').map(publicSportsEvent),
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         registrations: ownRegistrations,
+        membershipApplications: ownMembershipApplications,
+        availableTeams: activeTeams.map(({ id, name, sportId, sportName, category, teamType, description }) => ({ id, name, sportId, sportName, category, teamType, description })),
         participations,
         mySports: [...sportIds].map((sportId) => {
           const sport = (data.sports ?? DEFAULT_SPORTS_DATA).find((entry) => entry.id === sportId)
@@ -1751,11 +1987,93 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       })
     }
 
+    if (studentSportsMembershipApplicationPath) {
+      if (![ROLES.STUDENT, ROLES.SPORTS].includes(user.role)) return reject(response, 403, 'Only students can apply to join a sport or team.')
+      const input = await body(request)
+      const application = await store.transact((data) => {
+        data.sportsMembershipApplications ??= []
+        const teamId = safeText(input.teamId, 64)
+        const requestedSportId = safeText(input.sportId, 64)
+        if (Boolean(teamId) === Boolean(requestedSportId)) throw Object.assign(new Error('Choose exactly one sport or team to apply for.'), { status: 400 })
+        const team = teamId ? data.sportsTeams.find((entry) => entry.id === teamId && entry.status === 'ACTIVE') : null
+        if (teamId && !team) throw Object.assign(new Error('Choose an active sports team.'), { status: 404 })
+        const sport = sportFor(data, team?.sportId || requestedSportId)
+        if (!sport) throw Object.assign(new Error('Choose an active sport.'), { status: 404 })
+        if (team && team.sportId !== sport.id) throw Object.assign(new Error('The selected team does not belong to this sport.'), { status: 400 })
+        if (activeSportsParticipations(data, user.id).some((entry) => entry.sportId === sport.id && (!team || entry.teamId === team.id))) {
+          throw Object.assign(new Error(team ? 'You are already a member of this team.' : 'You are already participating in this sport.'), { status: 409 })
+        }
+        if (data.sportsMembershipApplications.some((entry) =>
+          entry.studentId === user.id &&
+          (team ? entry.teamId === team.id : entry.sportId === sport.id && !entry.teamId) &&
+          !['REJECTED', 'CANCELLED'].includes(entry.status))) {
+          throw Object.assign(new Error('You already have an application for this sport or team.'), { status: 409 })
+        }
+        const now = new Date().toISOString()
+        const created = {
+          id: randomUUID(), type: team ? 'TEAM' : 'SPORT',
+          sportId: sport.id, sportName: sport.title,
+          teamId: team?.id || '', teamName: team?.name || '',
+          studentId: user.id, studentName: user.name,
+          department: user.department || '', semester: user.semester || '',
+          status: 'APPLIED', createdAt: now, updatedAt: now,
+        }
+        data.sportsMembershipApplications.unshift(created)
+        for (const captain of data.users.filter((candidate) => candidate.active && candidate.role === ROLES.SPORTS)) {
+          addNotification(data, {
+            recipientUserId: captain.id,
+            title: 'New sports membership application',
+            message: `${user.name} applied to join ${team?.name || sport.title}.`,
+            referenceId: created.id, target: 'sports-management',
+          })
+        }
+        return created
+      })
+      return json(response, 201, { application })
+    }
+
+    const sportsMembershipApplicationRoute = pathname.match(/^\/api\/sports\/membership-applications\/([^/]+)$/)
+    if (sportsMembershipApplicationRoute && request.method === 'PATCH') {
+      const { status } = await body(request)
+      if (!['APPROVED', 'REJECTED'].includes(status)) return reject(response, 400, 'Choose Approved or Rejected.')
+      const updated = await store.transact((data) => {
+        const application = (data.sportsMembershipApplications || []).find((entry) => entry.id === safeDecodeURIComponent(sportsMembershipApplicationRoute[1]))
+        if (!application) throw Object.assign(new Error('Sports membership application not found.'), { status: 404 })
+        if (application.status !== 'APPLIED') throw Object.assign(new Error('This application has already been reviewed.'), { status: 409 })
+        const student = activeStudent(data, application.studentId)
+        if (!student) throw Object.assign(new Error('The applicant is no longer an active student.'), { status: 409 })
+        if (status === 'APPROVED') {
+          const sport = sportFor(data, application.sportId)
+          if (!sport) throw Object.assign(new Error('This sport is no longer active.'), { status: 409 })
+          if (application.teamId) {
+            const team = data.sportsTeams.find((entry) => entry.id === application.teamId && entry.status === 'ACTIVE')
+            if (!team || team.sportId !== sport.id) throw Object.assign(new Error('This team is no longer active.'), { status: 409 })
+            if (team.members.some((member) => member.studentId === student.id && member.status === 'ACTIVE')) throw Object.assign(new Error('This student is already a member of this team.'), { status: 409 })
+            ensureTeamMember(team, student)
+            team.updatedAt = new Date().toISOString()
+            ensureSportsParticipation(data, student, sport.id, sport.title, { teamId: team.id, source: 'TEAM' })
+          } else {
+            ensureSportsParticipation(data, student, sport.id, sport.title, { source: 'SPORT' })
+          }
+        }
+        application.status = status
+        application.updatedAt = new Date().toISOString()
+        addNotification(data, {
+          recipientUserId: student.id,
+          title: `Sports application ${status.toLowerCase()}`,
+          message: `${application.teamName || application.sportName} · ${status.toLowerCase()}.`,
+          referenceId: application.id, target: 'sports',
+        })
+        return application
+      })
+      return json(response, 200, { application: updated })
+    }
+
     if (sportsApplicationCancelPath) {
       const { status } = await body(request)
       if (status !== 'CANCELLED') return reject(response, 400, 'Applications can only be cancelled.')
       const updated = await store.transact((data) => {
-        const application = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(pathname.match(/^\/api\/sports\/applications\/([^/]+)$/)[1]))
+        const application = data.sportsRegistrations.find((entry) => entry.id === safeDecodeURIComponent(pathname.match(/^\/api\/sports\/applications\/([^/]+)$/)[1]))
         if (!application || application.studentId !== user.id) throw Object.assign(new Error('Sports application not found.'), { status: 404 })
         const cancellable = application.applicationType === 'SPORTS_EVENT'
           ? ['PENDING'].includes(application.status)
@@ -1802,7 +2120,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const upcomingEvents = data.sportsEvents.filter((entry) => SPORTS_EVENT_VISIBLE_STATUSES.includes(sportsEventStatus(entry)) && sportsEventStartsAt(entry) >= Date.now())
       const upcomingMatches = data.sportsSchedules.filter((entry) => entry.kind === 'MATCH' && Date.parse(`${entry.date}T${entry.time || '23:59'}:00`) >= Date.now())
       const activities = [
+<<<<<<< HEAD
         ...data.sportsRegistrations.map((entry) => ({ id: entry.id, type: 'Application', title: `${entry.studentName} applied for ${entry.eventName || entry.sportName}`, createdAt: entry.createdAt })),
+=======
+        ...data.sportsRegistrations.map((entry) => ({ id: entry.id, type: 'Registration', title: `${entry.studentName} registered for ${entry.eventName}`, createdAt: entry.createdAt })),
+        ...(data.sportsMembershipApplications || []).map((entry) => ({ id: entry.id, type: 'Membership application', title: `${entry.studentName} applied to join ${entry.teamName || entry.sportName}`, createdAt: entry.createdAt })),
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         ...data.sportsEvents.map((entry) => ({ id: entry.id, type: 'Event', title: entry.name, createdAt: entry.createdAt })),
         ...data.sportsTeams.map((entry) => ({ id: entry.id, type: 'Team', title: `Team created: ${entry.name}`, createdAt: entry.createdAt })),
         ...data.sportsSchedules.map((entry) => ({ id: entry.id, type: 'Schedule', title: `Scheduled: ${entry.title}`, createdAt: entry.createdAt })),
@@ -1814,7 +2137,11 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         sports: data.sports ?? DEFAULT_SPORTS_DATA,
         events: data.sportsEvents.map(publicSportsEvent),
         registrations: data.sportsRegistrations.map((entry) => publicSportsRegistration(entry, data)),
+<<<<<<< HEAD
         departments: SPORTS_DEPARTMENTS,
+=======
+        membershipApplications: data.sportsMembershipApplications || [],
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         teams: data.sportsTeams.map((team) => publicSportsTeam(team, data.users)),
         schedules: data.sportsSchedules,
         attendance: data.sportsAttendance,
@@ -1827,7 +2154,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           totalPlayers: new Set(data.sportsTeams.flatMap((team) => (team.members || []).filter((entry) => entry.status === 'ACTIVE' && activeStudent(data, entry.studentId)).map((entry) => entry.studentId))).size,
           totalTeams: data.sportsTeams.length,
           upcomingEvents: upcomingEvents.length + upcomingMatches.length,
+<<<<<<< HEAD
           pendingRegistrations: data.sportsRegistrations.filter((entry) => ['SUBMITTED', 'APPLIED', 'REGISTERED', 'SHORTLISTED', 'PENDING'].includes(entry.status)).length,
+=======
+          pendingRegistrations: data.sportsRegistrations.filter((entry) => ['APPLIED', 'REGISTERED', 'SHORTLISTED'].includes(entry.status)).length + (data.sportsMembershipApplications || []).filter((entry) => entry.status === 'APPLIED').length,
+          pendingMembershipApplications: (data.sportsMembershipApplications || []).filter((entry) => entry.status === 'APPLIED').length,
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
           activeTeams: data.sportsTeams.filter((team) => team.status === 'ACTIVE').length,
           recentActivities: activities.filter((entry) => entry.createdAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8),
         },
@@ -1852,7 +2184,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsRoute = pathname.match(/^\/api\/sports\/([^/]+)$/)
     if (sportsRoute && (request.method === 'PATCH' || request.method === 'DELETE')) {
       if (!sportsManager) return reject(response, 403, 'Sports Captain or Administration access is required.')
-      const id = decodeURIComponent(sportsRoute[1])
+      const id = safeDecodeURIComponent(sportsRoute[1])
       if (request.method === 'DELETE') return reject(response, 409, 'Sports records are retained for historical references. Deactivate the sport instead.')
       const input = await body(request)
       const updated = await store.transact((data) => {
@@ -1874,6 +2206,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     if (pathname === '/api/sports/events' && request.method === 'GET') {
       if (!studentSportsRole) return reject(response, 403, 'Student Sports access is not assigned to your role.')
+<<<<<<< HEAD
       const data = await readSportsData(store)
       return json(response, 200, { events: data.sportsEvents.filter(isPublicSportsEvent).map(publicSportsEvent) })
     }
@@ -1885,6 +2218,10 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsEventRoute[1]))
       if (!event || !sportsManager && !isPublicSportsEvent(event)) return reject(response, 404, 'Sports event not found.')
       return json(response, 200, { event: publicSportsEvent(event) })
+=======
+      const data = await store.read()
+      return json(response, 200, { events: data.sportsEvents.filter((entry) => entry.status !== 'CANCELLED').map(publicSportsEvent) })
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     }
 
     if (pathname === '/api/sports/events' && request.method === 'POST') {
@@ -1898,28 +2235,36 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         if (SPORTS_EVENT_VISIBLE_STATUSES.includes(event.status)) notifySportsEventAudience(data, event, addNotification)
         return event
       })
-      return json(response, 201, { event: created })
+      return json(response, 201, { event: publicSportsEvent(created) })
     }
 
     if (sportsEventRoute && request.method === 'PATCH') {
-      const eventId = decodeURIComponent(sportsEventRoute[1])
+      const eventId = safeDecodeURIComponent(sportsEventRoute[1])
       const input = await body(request)
       const updated = await store.transact((data) => {
         const event = data.sportsEvents.find((entry) => entry.id === eventId)
         if (!event) throw Object.assign(new Error('Sports event or trial not found.'), { status: 404 })
+<<<<<<< HEAD
         const patch = validateSportsEvent({ ...event, ...input }, data, { partial: true })
         const wasPublished = SPORTS_EVENT_PUBLISHED_STATUSES.includes(sportsEventStatus(event))
+=======
+        const patch = validateSportsEvent({ ...event, ...input }, data, {
+          partial: true,
+          allowLegacyDepartments: input.eligibleDepartments === undefined,
+        })
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         Object.assign(event, patch, { updatedAt: new Date().toISOString() })
         if (!wasPublished && SPORTS_EVENT_VISIBLE_STATUSES.includes(event.status)) notifySportsEventAudience(data, event, addNotification)
         return event
       })
-      return json(response, 200, { event: updated })
+      return json(response, 200, { event: publicSportsEvent(updated) })
     }
 
     const sportsRegistrationRoute = pathname.match(/^\/api\/sports\/events\/([^/]+)\/register$/)
     if (sportsRegistrationRoute && request.method === 'POST') {
       if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(user.role)) return reject(response, 403, 'Your role cannot apply for sports events.')
       const registration = await store.transact((data) => {
+<<<<<<< HEAD
         const event = data.sportsEvents.find((entry) => entry.id === decodeURIComponent(sportsRegistrationRoute[1]))
         if (event) normalizeStoredSportsEvent(event)
         for (const entry of data.sportsRegistrations.filter((candidate) => candidate.eventId === event?.id && candidate.applicationType === 'SPORTS_EVENT')) {
@@ -1943,6 +2288,19 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           status: SPORTS_EVENT_REGISTRATION_STATUS.PENDING, registrationDateTime: registeredAt,
           createdAt: registeredAt, updatedAt: registeredAt,
         }
+=======
+        const event = data.sportsEvents.find((entry) => entry.id === safeDecodeURIComponent(sportsRegistrationRoute[1]))
+        if (!event || event.status !== 'OPEN') throw Object.assign(new Error('This event or trial is not open for registration.'), { status: 409 })
+        if (event.registrationRequired === false) throw Object.assign(new Error('This event or trial does not require registration.'), { status: 409 })
+        if (!sportFor(data, event.sportId)) throw Object.assign(new Error('This event’s sport is no longer active.'), { status: 409 })
+        if (!validEventEligibility(event, user)) throw Object.assign(new Error('You are not eligible to register for this event.'), { status: 403 })
+        const today = new Date().toISOString().slice(0, 10)
+        if (event.registrationDeadline < today) throw Object.assign(new Error('The registration deadline has passed.'), { status: 409 })
+        if (event.date < today) throw Object.assign(new Error('This event or trial has already taken place.'), { status: 409 })
+        if (data.sportsRegistrations.some((entry) => entry.eventId === event.id && entry.studentId === user.id && !['REJECTED', 'CANCELLED'].includes(entry.status))) throw Object.assign(new Error('You already have an application for this event.'), { status: 409 })
+        if (event.maxParticipants && data.sportsRegistrations.filter((entry) => entry.eventId === event.id && !['REJECTED', 'CANCELLED'].includes(entry.status)).length >= event.maxParticipants) throw Object.assign(new Error('This event has reached its participant limit.'), { status: 409 })
+        const created = { id: randomUUID(), eventId: event.id, eventName: event.name, sportId: event.sportId, sportName: event.sportName, studentId: user.id, studentName: user.name, department: user.department || '', semester: user.semester || '', mobile: user.mobile || '', status: 'APPLIED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         data.sportsRegistrations.unshift(created)
         return created
       })
@@ -1958,6 +2316,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsParticipantRoute && request.method === 'PATCH') {
       const { status } = await body(request)
       const updated = await store.transact((data) => {
+<<<<<<< HEAD
         const registration = data.sportsRegistrations.find((entry) => entry.id === decodeURIComponent(sportsParticipantRoute[1]))
         const isSportsEvent = registration?.applicationType === 'SPORTS_EVENT'
         const transitions = isSportsEvent
@@ -1965,6 +2324,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
           : registration?.applicationType === 'SPORT'
           ? { SUBMITTED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: [], REJECTED: [] }
           : { APPLIED: ['SHORTLISTED', 'REJECTED'], REGISTERED: ['SHORTLISTED', 'REJECTED'], SHORTLISTED: ['SELECTED', 'REJECTED'], SELECTED: ['REJECTED'], REJECTED: [], CANCELLED: [] }
+=======
+        const registration = data.sportsRegistrations.find((entry) => entry.id === safeDecodeURIComponent(sportsParticipantRoute[1]))
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
         if (!registration) throw Object.assign(new Error('Sports registration not found.'), { status: 404 })
         if (!transitions[registration.status]?.includes(status)) throw Object.assign(new Error('That player selection transition is not allowed.'), { status: 409 })
         registration.status = status
@@ -2030,13 +2392,13 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     const sportsTeamRoute = pathname.match(/^\/api\/sports\/teams\/([^/]+)$/)
     if (sportsTeamRoute && request.method === 'GET') {
       const data = await store.read()
-      const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsTeamRoute[1]))
+      const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsTeamRoute[1]))
       return team ? json(response, 200, { team: publicSportsTeam(team, data.users) }) : reject(response, 404, 'Sports team not found.')
     }
     if (sportsTeamRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsTeamRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsTeamRoute[1]))
         if (!team) throw Object.assign(new Error('Sports team not found.'), { status: 404 })
         const next = validateSportsTeam({ ...team, ...input }, data, { partial: true })
         if (input.status !== undefined && !['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(input.status)) throw Object.assign(new Error('Choose ACTIVE, INACTIVE, or ARCHIVED team status.'), { status: 400 })
@@ -2068,7 +2430,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsMembersRoute && request.method === 'POST' && !sportsMembersRoute[2]) {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         if (!team) throw Object.assign(new Error('Sports team not found.'), { status: 404 })
         if (team.status !== 'ACTIVE') throw Object.assign(new Error('Players can only be added to an active team.'), { status: 409 })
         const student = activeStudent(data, input.studentId)
@@ -2089,7 +2451,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsMembersRoute && sportsMembersRoute[2] && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         const member = team?.members.find((entry) => entry.studentId === normalizeUserId(sportsMembersRoute[2]))
         if (!team || !member) throw Object.assign(new Error('Team player not found.'), { status: 404 })
         if (!['ACTIVE', 'INACTIVE'].includes(input.status)) throw Object.assign(new Error('Choose ACTIVE or INACTIVE player status.'), { status: 400 })
@@ -2104,7 +2466,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
     if (sportsMembersRoute && sportsMembersRoute[2] && request.method === 'DELETE') {
       const updated = await store.transact((data) => {
-        const team = data.sportsTeams.find((entry) => entry.id === decodeURIComponent(sportsMembersRoute[1]))
+        const team = data.sportsTeams.find((entry) => entry.id === safeDecodeURIComponent(sportsMembersRoute[1]))
         const studentId = normalizeUserId(sportsMembersRoute[2])
         if (!team || !team.members.some((entry) => entry.studentId === studentId)) throw Object.assign(new Error('Team player not found.'), { status: 404 })
         if ([team.captainId, team.viceCaptainId].includes(studentId)) throw Object.assign(new Error('Assign a different captain or vice-captain before removing this player.'), { status: 409 })
@@ -2135,7 +2497,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsScheduleRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const schedule = data.sportsSchedules.find((entry) => entry.id === decodeURIComponent(sportsScheduleRoute[1]))
+        const schedule = data.sportsSchedules.find((entry) => entry.id === safeDecodeURIComponent(sportsScheduleRoute[1]))
         if (!schedule) throw Object.assign(new Error('Sports schedule not found.'), { status: 404 })
         Object.assign(schedule, validateSportsSchedule({ ...schedule, ...input }, data, { partial: true }), { updatedAt: new Date().toISOString() })
         return schedule
@@ -2204,7 +2566,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     if (sportsAchievementRoute && request.method === 'PATCH') {
       const input = await body(request)
       const updated = await store.transact((data) => {
-        const achievement = data.sportsAchievements.find((entry) => entry.id === decodeURIComponent(sportsAchievementRoute[1]))
+        const achievement = data.sportsAchievements.find((entry) => entry.id === safeDecodeURIComponent(sportsAchievementRoute[1]))
         if (!achievement) throw Object.assign(new Error('Sports achievement not found.'), { status: 404 })
         Object.assign(achievement, validateSportsAchievement({ ...achievement, ...input }, data, { partial: true }), { updatedAt: new Date().toISOString() })
         return achievement
@@ -2242,7 +2604,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
   async function serveStatic(request, response, pathname) {
     if (!staticDirectory) return false
-    const candidate = resolve(staticDirectory, `.${decodeURIComponent(pathname)}`)
+    const decodedPathname = safeDecodeURIComponent(pathname)
+    if (!decodedPathname || decodedPathname.includes('\0')) return false
+    const candidate = resolve(staticDirectory, `.${decodedPathname}`)
     if (!candidate.startsWith(`${resolve(staticDirectory)}/`) && candidate !== resolve(staticDirectory)) return false
     try {
       const info = await stat(candidate)
@@ -2605,24 +2969,178 @@ function validateRecord(input) {
   return { title, description }
 }
 
-function validateManualCrowd(input) {
-  const crowdLevel = input.crowdLevel || 'Moderate'
-  const occupancyPercent = input.occupancyPercent === undefined || input.occupancyPercent === '' ? 68 : Number(input.occupancyPercent)
-  const estimatedWaitMinutes = input.estimatedWaitMinutes === undefined || input.estimatedWaitMinutes === '' ? 8 : Number(input.estimatedWaitMinutes)
-  if (!['Low', 'Moderate', 'Busy'].includes(crowdLevel)) throw Object.assign(new Error('Choose a valid manual crowd estimate.'), { status: 400 })
-  if (!Number.isInteger(occupancyPercent) || occupancyPercent < 0 || occupancyPercent > 100) throw Object.assign(new Error('Manual estimated occupancy must be between 0 and 100%. '), { status: 400 })
-  if (!Number.isInteger(estimatedWaitMinutes) || estimatedWaitMinutes < 0 || estimatedWaitMinutes > 180) throw Object.assign(new Error('Manual estimated wait must be between 0 and 180 minutes.'), { status: 400 })
-  return { crowdLevel, occupancyPercent, estimatedWaitMinutes, crowdUpdatedAt: new Date().toISOString() }
+function hasRemovedCrowdFields(input) {
+  return ['crowdLevel', 'occupancyPercent', 'estimatedWaitMinutes', 'crowdUpdatedAt'].some((field) => Object.hasOwn(input || {}, field))
 }
 
-function hasManualCrowd(input) {
-  return ['crowdLevel', 'occupancyPercent', 'estimatedWaitMinutes'].some((field) => input[field] !== undefined)
+function publicCampusFoodRecord(record) {
+  const { crowdLevel, occupancyPercent, estimatedWaitMinutes, crowdUpdatedAt, ...publicRecord } = record
+  return publicRecord
 }
 
 function campusRecords(data, collection) {
   data.campus ??= {}
   data.campus[collection] ??= structuredClone(DEFAULT_CAMPUS_DATA[collection] ?? [])
   return data.campus[collection]
+}
+
+function validateHostelRoom(input) {
+  if (hasHostelBedFields(input)) throw Object.assign(new Error('Bed and seat numbers are not part of hostel room records.'), { status: 400 })
+  const hostelName = safeText(input.hostelName, 100)
+  const block = safeText(input.block, 80)
+  const floor = safeText(input.floor, 40)
+  const roomNumber = safeText(input.roomNumber, 40)
+  const capacity = input.capacity
+  if (!hostelName || !block || !floor || !roomNumber || !Number.isInteger(capacity) || capacity < 1 || capacity > 20) {
+    throw Object.assign(new Error('Enter the hostel, block, floor, room number, and a capacity from 1 to 20.'), { status: 400 })
+  }
+  return { hostelName, block, floor, roomNumber, capacity }
+}
+
+function hasHostelBedFields(input) {
+  return Object.hasOwn(input || {}, 'bedNumber') || Object.hasOwn(input || {}, 'seatNumber')
+}
+
+function validateHostelDetails(input) {
+  if (hasHostelBedFields(input) || Object.hasOwn(input || {}, 'facilities')) {
+    throw Object.assign(new Error('Bed, seat, and facilities fields are not part of Hostel details.'), { status: 400 })
+  }
+  const hostelName = hostelText(input.hostelName, 2)
+  const roomNumber = hostelText(input.roomNumber, 40)
+  const floor = hostelText(input.floor, 40)
+  const roomType = hostelText(input.roomType, 20)
+  const roomCooling = hostelText(input.roomCooling, 20)
+  const roommateNamesInput = input.roommateNames === undefined ? [] : input.roommateNames
+  const wardenName = safeText(input.wardenName, 100)
+  const wardenContact = safeText(input.wardenContact, 40)
+  const additionalInformation = safeText(input.additionalInformation, 1000)
+  if (!HOSTEL_NAMES.includes(hostelName)) throw Object.assign(new Error('Choose a valid Hostel Name: B1, B2, B3, B4, G1, or G2.'), { status: 400 })
+  if (!roomNumber) throw Object.assign(new Error('Enter a valid Room Number.'), { status: 400 })
+  if (!floor) throw Object.assign(new Error('Enter a valid Floor.'), { status: 400 })
+  if (!HOSTEL_ROOM_TYPES.includes(roomType)) throw Object.assign(new Error('Choose a valid Room Type: Single, Double, Triple, 4 Sharing, or Shared.'), { status: 400 })
+  if (roomCooling && !HOSTEL_ROOM_COOLING_OPTIONS.includes(roomCooling)) {
+    throw Object.assign(new Error('Choose AC or Non-AC room cooling.'), { status: 400 })
+  }
+  if (!Array.isArray(roommateNamesInput) || roommateNamesInput.length > HOSTEL_ROOMMATE_LIMITS.Shared) {
+    throw Object.assign(new Error('Enter roommate names using the roommate list.'), { status: 400 })
+  }
+  const roommateNames = roommateNamesInput.map((name) => safeText(name, 100)).filter(Boolean)
+  if (roommateNames.length > HOSTEL_ROOMMATE_LIMITS[roomType]) {
+    throw Object.assign(new Error(`A ${roomType} room allows at most ${HOSTEL_ROOMMATE_LIMITS[roomType]} roommate names.`), { status: 400 })
+  }
+  if (wardenContact && !/^\+?[\d\s().-]{7,20}$/.test(wardenContact)) {
+    throw Object.assign(new Error('Enter a valid warden contact number.'), { status: 400 })
+  }
+  return { hostelName, roomNumber, floor, roomType, roomCooling, roommateNames, wardenName, wardenContact, additionalInformation }
+}
+
+function hostelText(value, maximum) {
+  if (typeof value === 'string') return value.trim().slice(0, maximum)
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value).slice(0, maximum)
+  return ''
+}
+
+function publicHostelDetails(details) {
+  return {
+    studentId: details.studentId,
+    hostelName: details.hostelName,
+    roomNumber: details.roomNumber,
+    floor: details.floor,
+    roomType: details.roomType,
+    roomCooling: details.roomCooling || '',
+    roommateNames: Array.isArray(details.roommateNames)
+      ? details.roommateNames.filter((name) => typeof name === 'string').map((name) => name.trim()).filter(Boolean)
+      : [],
+    wardenName: details.wardenName || '',
+    wardenContact: details.wardenContact || '',
+    additionalInformation: details.additionalInformation || '',
+    createdAt: details.createdAt,
+    updatedAt: details.updatedAt || details.createdAt,
+  }
+}
+
+function sameHostelRoom(left, right) {
+  return ['hostelName', 'block', 'floor', 'roomNumber']
+    .every((key) => left[key].toLocaleLowerCase() === right[key].toLocaleLowerCase())
+}
+
+function publicHostelRoom(room) {
+  return {
+    id: room.id,
+    hostelName: room.hostelName,
+    block: room.block,
+    floor: room.floor,
+    roomNumber: room.roomNumber,
+    capacity: room.capacity,
+    createdAt: room.createdAt,
+    ...(room.updatedAt ? { updatedAt: room.updatedAt } : {}),
+  }
+}
+
+function publicHostelAllotment(allotment) {
+  return {
+    id: allotment.id,
+    studentId: allotment.studentId,
+    roomId: allotment.roomId,
+    hostelName: allotment.hostelName,
+    block: allotment.block,
+    floor: allotment.floor,
+    roomNumber: allotment.roomNumber,
+    status: allotment.status,
+    createdAt: allotment.createdAt,
+    endedAt: allotment.endedAt || '',
+  }
+}
+
+function validateHostelMaintenance(input, user) {
+  const category = safeText(input.category, 40)
+  const description = safeText(input.description, 2000)
+  if (!HOSTEL_MAINTENANCE_CATEGORIES.includes(category) || description.length < 5) {
+    throw Object.assign(new Error('Choose a category and enter a description of at least 5 characters.'), { status: 400 })
+  }
+  return {
+    studentId: user.id,
+    category,
+    description,
+    status: 'SUBMITTED',
+  }
+}
+
+function publicHostelMaintenance(requestEntry) {
+  return {
+    id: requestEntry.id,
+    studentId: requestEntry.studentId,
+    category: requestEntry.category,
+    description: requestEntry.description,
+    status: requestEntry.status,
+    createdAt: requestEntry.createdAt,
+    ...(requestEntry.updatedAt ? { updatedAt: requestEntry.updatedAt } : {}),
+  }
+}
+
+function studentHostelView(data, user) {
+  const userAllotments = (data.hostelAllotments || [])
+    .filter((allotment) => allotment.studentId === user.id)
+    .map(publicHostelAllotment)
+  const currentAllotment = userAllotments.find((allotment) => allotment.status === 'ALLOTTED') || null
+  const roommates = currentAllotment
+    ? (data.hostelAllotments || [])
+      .filter((allotment) => allotment.roomId === currentAllotment.roomId && allotment.status === 'ALLOTTED' && allotment.studentId !== user.id)
+      .map((allotment) => (data.users || []).find((candidate) => candidate.id === allotment.studentId && candidate.role === ROLES.STUDENT && candidate.active)?.name)
+      .filter(Boolean)
+      .map((name) => ({ name }))
+    : []
+  return {
+    hostelDetails: (data.hostelDetails || []).find((entry) => entry.studentId === user.id)
+      ? publicHostelDetails(data.hostelDetails.find((entry) => entry.studentId === user.id))
+      : null,
+    currentAllotment,
+    allotments: userAllotments,
+    roommates,
+    maintenance: (data.hostelMaintenance || [])
+      .filter((requestEntry) => requestEntry.studentId === user.id)
+      .map(publicHostelMaintenance),
+  }
 }
 
 function validateComplaint(input, user) {
@@ -2785,6 +3303,41 @@ function validateCanteenItem(input) {
   return { diet, category, name, description, size, price, imageUrl, available: input.available !== false }
 }
 
+function defaultMessSettings() {
+  return { timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, { start: '', end: '' }])) }
+}
+
+function normalizeMessSettings(settings) {
+  const defaults = defaultMessSettings()
+  const timings = settings && typeof settings === 'object' ? settings.timings : null
+  return {
+    timings: Object.fromEntries(MESS_MEALS.map((meal) => {
+      const value = timings?.[meal] || {}
+      const start = typeof value.start === 'string' ? value.start : ''
+      const end = typeof value.end === 'string' ? value.end : ''
+      const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(start) && /^([01]\d|2[0-3]):[0-5]\d$/.test(end) && start !== end
+      return [meal, valid ? { start, end } : { start: '', end: '' }]
+    })),
+  }
+}
+
+function validateTimeWindow(value, label) {
+  const start = typeof value?.start === 'string' ? value.start : ''
+  const end = typeof value?.end === 'string' ? value.end : ''
+  if (!start && !end) return { start: '', end: '' }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start === end) {
+    throw Object.assign(new Error(`${label} needs a valid start and end time. End times before the start are treated as overnight.`), { status: 400 })
+  }
+  return { start, end }
+}
+
+function validateMessSettings(input) {
+  if (!input || typeof input !== 'object') throw Object.assign(new Error('Provide College Mess meal timings.'), { status: 400 })
+  return {
+    timings: Object.fromEntries(MESS_MEALS.map((meal) => [meal, validateTimeWindow(input.timings?.[meal], `${meal} timing`)])),
+  }
+}
+
 function publicCanteenOrder(order) {
   const {
     id, orderNumber, userId, studentName, studentId, customerUserId, customerName,
@@ -2818,8 +3371,37 @@ function campusNotices(data) {
 function initializeCampusNotices(data) {
   data.campus ??= {}
   if (!Array.isArray(data.campus.notices)) data.campus.notices = [...(DEFAULT_CAMPUS_DATA.notices || [])]
-  const eligible = data.users.filter((candidate) => candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
+  const campusNoticeIds = new Set(data.campus.notices.map((notice) => notice.id))
+  const studentIds = data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT).map((candidate) => candidate.id)
   const now = new Date().toISOString()
+  for (const legacy of data.messNotices || []) {
+    const id = `mess-legacy-${legacy.id}`
+    if (!legacy.active || !legacy.id || campusNoticeIds.has(id)) continue
+    const createdAt = Number.isFinite(Date.parse(legacy.createdAt)) ? legacy.createdAt : now
+    data.campus.notices.push({
+      id,
+      title: typeof legacy.title === 'string' ? legacy.title : 'College Mess announcement',
+      description: typeof legacy.description === 'string' ? legacy.description : '',
+      category: 'Canteen',
+      priority: 'Normal',
+      pinned: false,
+      important: false,
+      target: { type: 'ROLE', role: ROLES.STUDENT },
+      publishAt: createdAt,
+      expiresAt: '',
+      attachmentUrl: '',
+      attachmentName: '',
+      active: true,
+      createdBy: '',
+      issuerName: 'College Mess',
+      issuerRole: ROLES.ADMIN,
+      recipientIds: studentIds,
+      readBy: {},
+      createdAt,
+    })
+    campusNoticeIds.add(id)
+  }
+  const eligible = data.users.filter((candidate) => candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
   for (const notice of campusNotices(data)) {
     if (!notice.recipientIds) {
       notice.category ||= /exam/i.test(notice.title) ? 'Examination' : 'General'
@@ -2839,6 +3421,7 @@ function initializeCampusNotices(data) {
 function deliverDueNoticeNotifications(data) {
   const now = Date.now()
   for (const notice of campusNotices(data)) {
+    if (!notice.createdBy) continue
     if (Date.parse(notice.publishAt || notice.createdAt) > now || notice.expiresAt && Date.parse(notice.expiresAt) < now) continue
     for (const recipientUserId of notice.recipientIds || []) {
       const recipient = data.users.find((candidate) => candidate.id === recipientUserId && candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
@@ -3180,6 +3763,7 @@ function sportFor(data, value) {
   return records.find((entry) => entry.active !== false && ['Sport', 'Team'].includes(entry.kind) && (entry.id === key || entry.title.toLowerCase() === key.toLowerCase()))
 }
 
+<<<<<<< HEAD
 function validEventEligibility(event, user) {
   const departments = event.eligibleDepartments || []
   if (!departments.length || departments.includes(ALL_DEPARTMENTS)) return true
@@ -3213,6 +3797,63 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
   if ((!partial || input.endTime !== undefined) && !isNormalizedSportsTime(endTime)) throw sportsError('Choose a valid end time.')
   if ((!partial || input.startTime !== undefined || input.time !== undefined || input.endTime !== undefined) && startTime >= endTime) throw sportsError('End time must be after start time.')
   if ((!partial || input.registrationDeadline !== undefined) && !validCalendarDate(registrationDeadline)) throw sportsError('Choose a valid registration deadline.')
+=======
+function normalizeSportsDepartment(value) {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim().toLowerCase()
+  return SPORTS_DEPARTMENTS.find((department) => department.toLowerCase() === normalized) || ''
+}
+
+function sportsDepartmentFor(user) {
+  const department = normalizeSportsDepartment(user.department)
+  if (department) return department
+  const course = typeof user.course === 'string' ? user.course.trim().toLowerCase().replace(/[^a-z]/g, '') : ''
+  return course === 'btech' ? 'BTech' : normalizeSportsDepartment(user.course)
+}
+
+function validEventEligibility(event, user) {
+  const departments = event.eligibleDepartments || []
+  return !departments.length || departments.some((department) => {
+    const normalized = normalizeSportsDepartment(department)
+    return normalized
+      ? normalized === sportsDepartmentFor(user)
+      : typeof user.department === 'string' && department.trim().toLowerCase() === user.department.trim().toLowerCase()
+  })
+}
+
+function publicSportsEvent(event) {
+  return { ...event, registrationRequired: event.registrationRequired !== false }
+}
+
+function validateSportsEvent(input, data, { partial = false, allowLegacyDepartments = false } = {}) {
+  const name = safeText(input.name, 120)
+  const sport = sportFor(data, input.sportId || input.sportName)
+  const date = safeText(input.date, 10)
+  const rawTime = safeText(input.time, 8)
+  const time = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(rawTime) ? rawTime.slice(0, 5) : rawTime
+  const registrationDeadline = safeText(input.registrationDeadline, 10)
+  const venue = safeText(input.venue, 160)
+  const eligibility = safeText(input.eligibility, 300)
+  const description = safeText(input.description, 2000)
+  const status = safeText(input.status || 'OPEN', 20).toUpperCase()
+  const maxParticipants = input.maxParticipants === '' || input.maxParticipants === undefined ? 0 : Number(input.maxParticipants)
+  const kind = safeText(input.kind || 'EVENT', 20).toUpperCase()
+  const registrationRequired = input.registrationRequired === undefined ? true : input.registrationRequired
+  const departmentValues = Array.isArray(input.eligibleDepartments) ? input.eligibleDepartments : []
+  const eligibleDepartments = [...new Set(departmentValues.map((value) => {
+    const normalized = normalizeSportsDepartment(value)
+    const legacy = allowLegacyDepartments && typeof value === 'string' && DEPARTMENTS.find((department) => department.toLowerCase() === value.trim().toLowerCase())
+    if (!normalized && !legacy) throw sportsError('Choose one of the valid Sports departments: BTech, BCA, Law, Pharmacy, Diploma, or Management.')
+    return normalized || legacy
+  }))]
+  if (input.eligibleDepartments !== undefined && !Array.isArray(input.eligibleDepartments)) throw sportsError('Choose valid Sports departments for event eligibility.')
+  if (typeof registrationRequired !== 'boolean') throw sportsError('Choose whether event registration is required.')
+  if ((!partial || input.name !== undefined) && name.length < 2) throw sportsError('Enter an event or trial name.')
+  if (!sport && (!partial || input.sportId !== undefined || input.sportName !== undefined)) throw sportsError('Choose an active sport.')
+  if ((!partial || input.date !== undefined) && !validCalendarDate(date)) throw sportsError('Choose a valid event date.')
+  if ((!partial || input.time !== undefined) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw sportsError('Choose a valid event time using the time picker.')
+  if ((registrationRequired && (!partial || input.registrationDeadline !== undefined) || registrationDeadline) && !validCalendarDate(registrationDeadline)) throw sportsError('Choose a valid registration deadline.')
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   if (date && registrationDeadline && registrationDeadline > date) throw sportsError('Registration deadline cannot be after the event date.')
   if ((!partial || input.venue !== undefined) && !venue) throw sportsError('Enter an event venue.')
   if ((!partial || input.description !== undefined) && description.length < 3) throw sportsError('Add an event description.')
@@ -3227,9 +3868,14 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
     ...(partial && input.name === undefined ? {} : { name }),
     ...(partial && input.sportId === undefined && input.sportName === undefined ? {} : { sportId: sport.id, sportName: sport.title }),
     ...(partial && input.date === undefined ? {} : { date }),
+<<<<<<< HEAD
     ...(partial && input.time === undefined && input.startTime === undefined ? {} : { startTime }),
     ...(partial && input.endTime === undefined && input.startTime === undefined && input.time === undefined ? {} : { endTime }),
     ...(partial && input.registrationDeadline === undefined ? {} : { registrationDeadline }),
+=======
+    ...(partial && input.time === undefined ? {} : { time }),
+    ...(partial && input.registrationDeadline === undefined ? {} : { registrationDeadline: registrationDeadline || '' }),
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     ...(partial && input.venue === undefined ? {} : { venue }),
     ...(partial && input.maxParticipants === undefined ? {} : { maxParticipants }),
     ...(partial && input.eligibility === undefined ? {} : { eligibility }),
@@ -3239,6 +3885,7 @@ function validateSportsEvent(input, data, { partial = false } = {}) {
     ...(partial && input.eventImage === undefined ? {} : { eventImage }),
     ...(partial && input.kind === undefined ? {} : { kind }),
     ...(partial && input.status === undefined ? {} : { status }),
+<<<<<<< HEAD
     ...(partial && input.audienceType === undefined ? {} : { audienceType }),
     ...(partial && input.audienceId === undefined && audienceType !== 'SPORT' ? {} : { audienceId }),
   }
@@ -3297,6 +3944,9 @@ function notifySportsEventAudience(data, event, addNotification) {
       message: `${event.sportName} · ${event.date} · ${formatSportsTime(event.startTime || event.time)} · ${event.venue}`,
       referenceId: event.id, target: 'sports', type: 'SPORTS_EVENT',
     })
+=======
+    registrationRequired,
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   }
 }
 
@@ -3444,7 +4094,9 @@ function validCalendarDate(value) {
 }
 
 function sportsNoticeRecipients(notice, data) {
-  if (notice.audienceType === 'ALL') return [...new Set(data.users.filter((candidate) => candidate.active && [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS].includes(candidate.role)).map((candidate) => candidate.id))]
+  if (notice.audienceType === 'ALL') return activeSportsUsers(data)
+    .filter((candidate) => activeSportsParticipations(data, candidate.id).length > 0)
+    .map((candidate) => candidate.id)
   if (notice.audienceType === 'TEAM') {
     const team = data.sportsTeams.find((entry) => entry.id === notice.audienceId)
     if (!team) throw sportsError('Choose an existing team for this notice.')

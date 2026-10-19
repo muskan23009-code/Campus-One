@@ -1,17 +1,29 @@
 import { createServer } from 'node:http'
-import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createServer as createViteServer } from 'vite'
 import { createCampusApp } from './app.js'
 import { loadProjectEnvironment } from './env.js'
 import { createStore } from './store.js'
 
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
 loadProjectEnvironment()
+
+export function resolveDataDirectory({ directory = process.env.CAMPUS_DATA_DIR, production = false } = {}) {
+  if (!directory && production) {
+    throw new Error('CAMPUS_DATA_DIR must point to durable storage before production startup.')
+  }
+  return resolve(projectRoot, directory || '.data')
+}
 
 export async function startServer(options = {}) {
   const production = options.production ?? process.env.NODE_ENV === 'production'
   const port = Number(options.port ?? process.env.PORT ?? 5173)
-  const store = options.store || createStore(options.dataDirectory || process.env.CAMPUS_DATA_DIR || resolve('.data'))
+  const store = options.store || createStore(resolveDataDirectory({
+    directory: options.dataDirectory || process.env.CAMPUS_DATA_DIR,
+    production,
+  }))
   const sessionSecret = options.sessionSecret || await store.getSessionSecret()
   let vite
   const handler = createCampusApp({

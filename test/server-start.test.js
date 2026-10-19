@@ -2,10 +2,13 @@ import { request as httpRequest } from 'node:http'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { loadProjectEnvironment } from '../server/env.js'
-import { startServer } from '../server/index.js'
+import { resolveDataDirectory, startServer } from '../server/index.js'
+
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -47,6 +50,69 @@ test('project env files load persistently without overriding process-provided va
     if (original === undefined) delete process.env[key]
     else process.env[key] = original
     await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('the default data directory is project-root anchored and production requires an explicit path', () => {
+  assert.equal(resolveDataDirectory({ directory: null }), resolve(projectRoot, '.data'))
+  assert.equal(resolveDataDirectory({ directory: 'private-data' }), resolve(projectRoot, 'private-data'))
+  assert.throws(
+    () => resolveDataDirectory({ directory: null, production: true }),
+    /CAMPUS_DATA_DIR must point to durable storage/,
+  )
+})
+
+test('a persisted Administration login still opens its role session after server restart', async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-restart-'))
+  const accessCodeKey = 'CAMPUS_ADMIN_ACCESS_CODE'
+  const previousAccessCode = process.env[accessCodeKey]
+  const accessCode = 'private-test-access-code'
+  const password = 'a-secure-campus-test-password'
+  let instance
+  try {
+    process.env[accessCodeKey] = accessCode
+    instance = await startServer({ port: 0, dataDirectory })
+    let url = `http://127.0.0.1:${instance.server.address().port}`
+    let host = `localhost:${instance.server.address().port}`
+    let response = await forwardedRequest(`${url}/api/registrations`, {
+      host,
+      origin: `http://${host}`,
+      method: 'POST',
+      body: {
+        role: 'Administration', name: 'Restart Test Admin', gender: 'Prefer not to say',
+        mobile: '9876543210', email: 'restart-admin@example.edu',
+        designation: 'Campus Administrator', accessCode, password,
+      },
+    })
+    assert.equal(response.status, 201, response.text)
+    const userId = JSON.parse(response.text).user.id
+    await instance.close()
+
+    instance = await startServer({ port: 0, dataDirectory })
+    url = `http://127.0.0.1:${instance.server.address().port}`
+    host = `localhost:${instance.server.address().port}`
+    response = await forwardedRequest(`${url}/api/auth/login`, {
+      host,
+      origin: `http://${host}`,
+      method: 'POST',
+      body: { userId, role: 'Administration', password },
+    })
+    assert.equal(response.status, 200, response.text)
+    const setCookie = response.headers['set-cookie']
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';', 1)[0]
+    assert.ok(cookie)
+
+    response = await forwardedRequest(`${url}/api/auth/me`, { host, cookie })
+    assert.equal(response.status, 200, response.text)
+    const session = JSON.parse(response.text)
+    assert.equal(session.user.id, userId)
+    assert.equal(session.user.role, 'Administration')
+    assert.ok(session.modules.includes('campus-management'))
+  } finally {
+    await instance?.close()
+    if (previousAccessCode === undefined) delete process.env[accessCodeKey]
+    else process.env[accessCodeKey] = previousAccessCode
+    await rm(dataDirectory, { recursive: true, force: true })
   }
 })
 

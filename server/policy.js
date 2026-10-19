@@ -155,11 +155,15 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
   })))
 export function canAccess(user, moduleId) {
   if (moduleId === 'library' || moduleId === 'transport') return false
+<<<<<<< HEAD
+=======
+  if (moduleId === 'hostel') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   return modulesForUser(user).includes(moduleId)
 }
 
 export const MANAGEMENT_COLLECTIONS = Object.freeze([
-  'notices', 'food', 'events', 'library', 'hostel', 'transport',
+  'notices', 'food', 'events',
   'directory', 'emergency',
 ])
 
@@ -170,31 +174,22 @@ export const LEGACY_DEPARTMENTS = Object.freeze([
   'Electrical Engineering', 'Business Administration',
 ])
 
+export const SPORTS_DEPARTMENTS = Object.freeze([
+  'BTech', 'BCA', 'Law', 'Pharmacy', 'Diploma', 'Management',
+])
+
 export const DEFAULT_CAMPUS_DATA = Object.freeze({
   notices: [
     { id: 'notice-exams', title: 'Mid-semester examination schedule', description: 'Confirm your exam center by Friday, October 9.', active: true },
     { id: 'notice-scholarship', title: 'Scholarship renewal applications', description: 'Student Affairs applications close October 14.', active: true },
-    { id: 'notice-library', title: 'Library extended hours this week', description: 'The library closes at 8:00 pm this week.', active: true },
   ],
   food: [
-    { id: 'food-mess', title: 'North student mess', description: 'Lunch · 12:00–2:30 pm · Manual campus estimate', active: true, crowdLevel: 'Moderate', occupancyPercent: 68, estimatedWaitMinutes: 8, crowdUpdatedAt: '2026-10-04T09:00:00.000Z' },
+    { id: 'food-mess', title: 'North student mess', description: 'College Mess meal information', active: true },
     { id: 'food-canteen', title: 'Sunrise canteen', description: 'Grilled paneer wrap · ₹90 · About 12 minutes', active: true },
   ],
   events: [
     { id: 'event-design', title: 'Design week · Opening night', description: 'Thursday · 5:00 pm · Main auditorium', active: true },
     { id: 'event-openmic', title: 'Open mic at the courtyard', description: 'Friday · 6:30 pm · Student courtyard', active: true },
-  ],
-  library: [
-    { id: 'library-central', title: 'Central library', description: 'Open today · Closes at 8:00 pm', active: true },
-    { id: 'library-reading-room', title: 'Engineering reading room', description: 'Academic Block A · Quiet study', active: true },
-  ],
-  hostel: [
-    { id: 'hostel-maintenance', title: 'Room maintenance', description: 'Track a repair request or report an issue.', active: true },
-    { id: 'hostel-notices', title: 'Residence notices', description: 'Updates from your hostel community.', active: true },
-  ],
-  transport: [
-    { id: 'transport-s04', title: 'Route S-04', description: 'West campus · Library · Student residence', active: true },
-    { id: 'transport-shuttle', title: 'Campus shuttle', description: 'Gate 2 · Every 15 minutes', active: true },
   ],
   directory: [
     { id: 'directory-engineering', title: 'School of Engineering', description: 'Academic Block A · Mon–Fri, 9 am–4 pm', active: true },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CircleAlert, Clock3, Minus, Plus, Search, ShoppingBag, Utensils, X } from 'lucide-react'
+import { ArrowLeft, Check, CircleAlert, Clock3, Minus, Plus, Search, ShoppingBag, Utensils, X } from 'lucide-react'
 import { api } from '../api/client'
 
 const STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'REJECTED']
@@ -9,7 +9,7 @@ const CATEGORIES = {
   'Non-Veg': ['Burger', 'Sandwich', 'Chicken Momos', 'Eggs', 'Patty', 'Continental', 'Add On', 'Chinese'],
 }
 
-export default function Canteen({ user, onNotify, onLogout }) {
+export default function Canteen({ user, onNotify, onLogout, onBack }) {
   const manager = user.role === 'Canteen Staff'
   const customer = ['Student', 'Staff', 'HOD', 'Sports Captain', 'Administration'].includes(user.role)
   const [items, setItems] = useState([])
@@ -122,7 +122,7 @@ export default function Canteen({ user, onNotify, onLogout }) {
   }
 
   return <div className="module-page page-enter canteen-page">
-    <div className="module-breadcrumb">CAMPUS <span>›</span> CANTEEN</div>
+    <div className="module-breadcrumb">{onBack && <button className="canteen-back-link" onClick={onBack}><ArrowLeft size={13}/>Food & Dine In</button>}CAMPUS <span>›</span> CANTEEN</div>
     <section className="module-hero canteen-hero">
       <div className="module-title-area"><span className="module-icon"><Utensils size={20}/></span><span className="module-eyebrow">PURAN MURTI VIDYAPEETH · FRESHLY MADE</span><h1>{manager ? 'Canteen dashboard' : 'Canteen'}<span className="module-title-period">.</span></h1><p>{manager ? 'Review incoming orders and update each order through delivery.' : 'Browse the menu, choose your favourites and pre-order from campus.'}</p></div>
       {user.role === 'Canteen Staff' && <button className="canteen-signout" onClick={onLogout}>Sign out</button>}

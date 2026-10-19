@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
+<<<<<<< HEAD
   Activity, ArrowRight, ArrowUpRight, Bell, BookOpen, Building2,
+=======
+  Activity, ArrowRight, ArrowUpRight, Bell, Building2,
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   CalendarDays, ChartNoAxesCombined, Check, ChevronRight, Clock3,
   ContactRound, HeartPulse, Map, MapPin, Megaphone,
   MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles,
@@ -8,13 +12,25 @@ import {
 } from 'lucide-react'
 import { moduleDetails } from '../data/campusData'
 import { api } from '../api/client'
+import CampusAI from './CampusAI'
 
+<<<<<<< HEAD
 const icons = { Activity, ArrowRight, Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ContactRound, HeartPulse, Map, MapPin, Megaphone, MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles, Utensils }
+=======
+const icons = { Activity, ArrowRight, Bell, Building2, CalendarDays, ChartNoAxesCombined, ContactRound, HeartPulse, Map, MapPin, Megaphone, MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles, Utensils }
+const MESS_MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Dinner']
+
+function formatMealTime(value) {
+  if (!value) return ''
+  const [hour, minute] = value.split(':').map(Number)
+  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+}
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
 
 export default function ModuleView({ page, user, onAction }) {
   const [filter, setFilter] = useState('')
-  const [copilotQuestion, setCopilotQuestion] = useState('')
   const [liveRecords, setLiveRecords] = useState(null)
+  const [messSettings, setMessSettings] = useState(null)
   const [complaintRecords, setComplaintRecords] = useState(null)
   const [foodOrders, setFoodOrders] = useState([])
   const [foodMeal, setFoodMeal] = useState('Lunch')
@@ -26,7 +42,6 @@ export default function ModuleView({ page, user, onAction }) {
   const Icon = icons[detail.icon] || Sparkles
   const rows = liveRecords ? liveRecords.map((record) => [record.title, record.description, 'View details']) : detail.rows
   const filtered = rows.filter((row) => row.join(' ').toLowerCase().includes(filter.toLowerCase()))
-  const messEstimate = liveRecords?.find((record) => record.id === 'food-mess') || liveRecords?.find((record) => record.title.toLowerCase().includes('mess'))
   const foodMenus = {
     Breakfast: ['Idli with sambhar', 'Aloo paratha', 'Masala omelette'],
     Lunch: ['Dal makhani & jeera rice', 'Paneer tikka wrap', 'Seasonal fruit bowl'],
@@ -36,15 +51,21 @@ export default function ModuleView({ page, user, onAction }) {
   useEffect(() => {
     let active = true
     setLiveRecords(null)
+    setMessSettings(null)
     setComplaintRecords(null)
+<<<<<<< HEAD
     const collections = { notices: 'notices', food: 'food', events: 'events', hostel: 'hostel', directory: 'directory', emergency: 'emergency' }
     const request = page === 'complaints' ? api('/api/complaints') : page === 'food' ? Promise.all([api('/api/campus/food'), user.role === 'Student' ? api('/api/food/orders') : Promise.resolve({ orders: [] })]) : collections[page] ? api(`/api/campus/${collections[page]}`) : page === 'sports' ? api('/api/sports') : null
+=======
+    const collections = { notices: 'notices', food: 'food', events: 'events', directory: 'directory', emergency: 'emergency' }
+    const request = page === 'complaints' ? api('/api/complaints') : page === 'food' ? Promise.all([api('/api/campus/food'), api('/api/mess'), user.role === 'Student' ? api('/api/food/orders') : Promise.resolve({ orders: [] })]) : collections[page] ? api(`/api/campus/${collections[page]}`) : page === 'sports' ? api('/api/sports') : null
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     if (!request) { setLiveRecords(null); setComplaintRecords(null); setRecordsError(''); return () => { active = false } }
     setRecordsError('')
     request.then((result) => {
       if (!active) return
       if (page === 'complaints') setComplaintRecords(result.complaints)
-      else if (page === 'food') { setLiveRecords(result[0].records); setFoodOrders(result[1].orders) }
+      else if (page === 'food') { setLiveRecords(result[0].records); setMessSettings(result[1].settings); setFoodOrders(result[2].orders) }
       else setLiveRecords(page === 'sports' ? result.records.filter((record) => record.active) : result.records)
     }).catch((reason) => { if (active) setRecordsError(reason.message) })
     return () => { active = false }
@@ -74,13 +95,11 @@ export default function ModuleView({ page, user, onAction }) {
     ? complaintRecords.map((record) => ({ ...record, details: `${record.status} · ${new Date(record.createdAt).toLocaleDateString()}${record.assignedTo ? ` · Assigned to ${record.assignedTo}` : ''}` }))
     : null
 
+  if (page === 'copilot') return <CampusAI user={user} onNavigate={onNavigate} />
+
   function runAction(label) {
     if (page === 'complaints' && label.toLowerCase().includes('request')) {
       onAction('Tell us what is on your mind')
-      return
-    }
-    if (page === 'copilot' && (label.startsWith('Ask about') || label.includes('Find a service') || label.includes('Explore campus'))) {
-      setCopilotQuestion(label)
       return
     }
     if (page === 'navigation') { onAction(`Directions to ${label.replace('Get directions', '').trim() || 'selected campus location'}`); return }
@@ -89,17 +108,36 @@ export default function ModuleView({ page, user, onAction }) {
   }
 
   return (
-    <div className={`module-page module-accent-${detail.accent} page-enter`}>
+    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'events' ? 'campus-events-page' : ''}`}>
       <div className="module-breadcrumb">YOUR CAMPUS <ChevronRight size={12} /> CAMPUS SERVICES</div>
       <section className="module-hero"><div className="module-title-area"><span className="module-icon"><Icon size={20} strokeWidth={1.8} /></span><span className="module-eyebrow">{detail.eyebrow}</span><h1>{detail.title}<span className="module-title-period">.</span></h1><p>{detail.description}</p></div>{page === 'complaints' && <button className="module-primary" onClick={() => onAction('Tell us what is on your mind')}><MessageCircle size={15} /> Make a request</button>}{page === 'copilot' && <span className="module-available"><span /> READY WHEN YOU ARE</span>}</section>
 
       <section className="module-stats">{detail.stats.map(([label, value], index) => <div className="module-stat" key={label}><span className="module-stat-icon"><StatIcon index={index} /></span><span><span>{label}</span><strong>{value}</strong></span>{index === 0 && <ArrowUpRight className="module-stat-trend" size={15} />}</div>)}</section>
 
+<<<<<<< HEAD
       {page === 'copilot' && <section className="copilot-chat"><div className="copilot-chat-heading"><span className="chat-spark"><Sparkles size={16} /></span><div><strong>What can I help you with?</strong><span>Ask away. Your campus copilot is listening.</span></div></div><form className="copilot-chat-form" onSubmit={(event) => { event.preventDefault(); if (copilotQuestion.trim()) runAction(copilotQuestion); else runAction('Ask about your campus') }}><input aria-label="Ask your campus copilot" placeholder="e.g. How can I contact student services?" value={copilotQuestion} onChange={(event) => setCopilotQuestion(event.target.value)} /><button aria-label="Send message"><ArrowRight size={16} /></button></form><div className="chat-suggestions">{detail.suggestions.map((suggestion) => <button key={suggestion} onClick={() => setCopilotQuestion(suggestion)}>{suggestion}<ArrowUpRight size={12} /></button>)}</div><div className="copilot-privacy"><ShieldAlert size={12} /> Campus-trained assistance. Your conversations stay private.</div></section>}
 
       {page === 'navigation' && <section className="map-preview"><div className="map-canvas"><div className="map-roads road-one"/><div className="map-roads road-two"/><div className="map-roads road-three"/><div className="map-park park-one"/><div className="map-park park-two"/><span className="map-building building-one"><Building2 size={18}/><span>ACADEMIC BLOCK A</span></span><span className="map-building building-three"><Utensils size={16}/><span>NORTH MESS</span></span><span className="map-building building-four"><HeartPulse size={16}/><span>HEALTH CENTRE</span></span><span className="map-pin pin-current"><span /></span><span className="map-pin pin-destination"><MapPin size={14} /></span><span className="map-map-label">PURAN MURTI VIDYAPEETH · SONIPAT</span></div><div className="map-controls"><div><span>3 places</span><span>Across campus</span></div><button onClick={() => runAction('Plan a route')}><Map size={15} /> Plan a route</button></div></section>}
 
       {page === 'food' && <><section className="dining-feature"><div className="dining-feature-top"><span className="dining-feature-icon"><Utensils size={18}/></span><span className="dining-live"><span/> MANUAL CAMPUS ESTIMATE</span></div><strong>{messEstimate?.title || 'North student mess'}</strong><span className="dining-subtitle">{messEstimate?.description || 'Lunch · 12:00–2:30 pm · Campus-provided manual estimate'}</span><div className="dining-occupancy"><div><strong>{messEstimate?.occupancyPercent ?? 68}<span>%</span></strong><span>estimated occupancy</span></div><span className="occupancy-meter"><i style={{ right: `${100 - (messEstimate?.occupancyPercent ?? 68)}%` }}/></span><div className="dining-wait"><strong>{messEstimate?.estimatedWaitMinutes ?? 8}<span> min</span></strong><span>estimated wait</span></div></div><div className="dining-note"><Check size={13}/>{messEstimate?.crowdLevel || 'Moderate'} crowd · Manual estimate, not camera detection{messEstimate?.crowdUpdatedAt ? ` · Updated ${new Date(messEstimate.crowdUpdatedAt).toLocaleString()}` : ''}</div></section><section className="food-order-panel"><div className="section-eyebrow">PLACE A CAMPUS CANTEEN PRE-ORDER</div><h2>Choose from today’s menu</h2><form className="food-order-form" onSubmit={placeFoodOrder}><label>MEAL<select value={foodMeal} onChange={(event) => { setFoodMeal(event.target.value); setFoodItem(foodMenus[event.target.value][0]) }}>{Object.keys(foodMenus).map((meal) => <option key={meal}>{meal}</option>)}</select></label><label>MENU ITEM<select value={foodItem} onChange={(event) => setFoodItem(event.target.value)}>{foodMenus[foodMeal].map((item) => <option key={item}>{item}</option>)}</select></label><button className="module-primary" disabled={orderBusy || user.role !== 'Student'}>{orderBusy ? 'Placing order…' : 'Place pre-order'} <ArrowRight size={13}/></button></form>{foodNotice && <div className="food-order-confirmation" role="status"><Check size={13}/>{foodNotice}</div>}</section>{user.role === 'Student' && foodOrders.length > 0 && <section className="student-orders-section"><div className="module-list-header"><div><span className="section-eyebrow">STUDENT ACCOUNT</span><h2>Your canteen orders</h2></div></div><div className="sports-record-list">{foodOrders.map((order) => <article className="sports-record-row" key={order.id}><span className="sports-record-icon record-amber"><Utensils size={15}/></span><div className="module-row-body"><strong>{order.item}</strong><span>{order.meal} · {order.orderNumber} · {new Date(order.createdAt).toLocaleString()}</span></div><span className={`application-status application-${order.status.toLowerCase()}`}><i/>{order.status}</span></article>)}</div></section>}</>}
+=======
+      {page === 'navigation' && <section className="map-preview"><div className="map-canvas"><div className="map-roads road-one"/><div className="map-roads road-two"/><div className="map-roads road-three"/><div className="map-park park-one"/><div className="map-park park-two"/><span className="map-building building-one"><Building2 size={18}/><span>ACADEMIC BLOCK A</span></span><span className="map-building building-two"><Utensils size={16}/><span>NORTH MESS</span></span><span className="map-building building-three"><HeartPulse size={16}/><span>HEALTH CENTRE</span></span><span className="map-pin pin-current"><span /></span><span className="map-pin pin-destination"><MapPin size={14} /></span><span className="map-map-label">PURAN MURTI VIDYAPEETH · SONIPAT</span></div><div className="map-controls"><div><span>3 places</span><span>Across campus</span></div><button onClick={() => runAction('Plan a campus route')}><Map size={15} /> Plan a route</button></div></section>}
+
+      {page === 'food' && <>
+        <section className="dining-feature">
+          <div className="dining-feature-top"><span className="dining-feature-icon"><Clock3 size={18}/></span><span className="section-eyebrow">COLLEGE MESS</span></div>
+          <strong>Meal timings</strong>
+          <div className="mess-meal-list">{MESS_MEALS.map((meal) => {
+            const timing = messSettings?.timings[meal]
+            const announced = timing?.start && timing?.end
+            const nextDay = announced && timing.end < timing.start
+            return <article className="mess-meal-row" key={meal}><span className="mess-meal-name">{meal}</span><strong>{announced ? `${formatMealTime(timing.start)} – ${formatMealTime(timing.end)}${nextDay ? ' · next day' : ''}` : 'Timings not announced yet'}</strong></article>
+          })}</div>
+        </section>
+        <section className="food-order-panel"><div className="section-eyebrow">CANTEEN PRE-ORDER</div><h2>Choose from today’s menu</h2><form className="food-order-form" onSubmit={placeFoodOrder}><label>MEAL<select value={foodMeal} onChange={(event) => { setFoodMeal(event.target.value); setFoodItem(foodMenus[event.target.value][0]) }}>{Object.keys(foodMenus).map((meal) => <option key={meal}>{meal}</option>)}</select></label><label>MENU ITEM<select value={foodItem} onChange={(event) => setFoodItem(event.target.value)}>{foodMenus[foodMeal].map((item) => <option key={item}>{item}</option>)}</select></label><button className="module-primary" disabled={orderBusy || user.role !== 'Student'}>{orderBusy ? 'Placing order…' : 'Place pre-order'} <ArrowRight size={13}/></button></form>{foodNotice && <div className="food-order-confirmation" role="status"><Check size={13}/>{foodNotice}</div>}</section>
+        {user.role === 'Student' && foodOrders.length > 0 && <section className="student-orders-section"><div className="module-list-header"><div><span className="section-eyebrow">STUDENT ACCOUNT</span><h2>Your canteen orders</h2></div></div><div className="sports-record-list">{foodOrders.map((order) => <article className="sports-record-row" key={order.id}><span className="sports-record-icon record-amber"><Utensils size={15}/></span><div className="module-row-body"><strong>{order.item}</strong><span>{order.meal} · {order.orderNumber} · {new Date(order.createdAt).toLocaleString()}</span></div><span className={`application-status application-${order.status.toLowerCase()}`}><i/>{order.status}</span></article>)}</div></section>}
+      </>}
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
 
       {page !== 'navigation' && page !== 'food' && page !== 'copilot' && <div className="module-search"><Search size={16} /><input aria-label={`Search ${detail.title}`} placeholder={`Find something in ${detail.title.toLowerCase()}...`} value={filter} onChange={(event) => setFilter(event.target.value)} />{filter && <button onClick={() => setFilter('')}>Clear</button>}</div>}
 

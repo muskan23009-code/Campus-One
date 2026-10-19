@@ -5,8 +5,7 @@ export const navigationGroups = [
       { id: 'overview', label: 'Overview', icon: 'LayoutDashboard' },
       { id: 'copilot', label: 'AI Copilot', icon: 'Sparkles', badge: 'AI' },
       { id: 'notices', label: 'Notices & Announcements', icon: 'Megaphone' },
-      { id: 'food', label: 'Food & dining', icon: 'Utensils' },
-      { id: 'canteen', label: 'Canteen', icon: 'Utensils' },
+      { id: 'food', label: 'Food & Dine In', icon: 'Utensils' },
       { id: 'navigation', label: 'Campus map', icon: 'Map' },
     ],
   },
@@ -66,7 +65,11 @@ export const moduleDetails = {
     icon: 'Sparkles',
     accent: 'mint',
     stats: [['Always on', 'Available 24/7'], ['Made for you', 'Campus-trained AI'], ['Good to know', 'Private conversations']],
+<<<<<<< HEAD
     suggestions: ['How do I apply for a bonafide certificate?', 'What is happening on campus this week?'],
+=======
+    suggestions: ['Where can I find campus dining?', 'How do I apply for a bonafide certificate?', 'What is happening on campus this week?'],
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
     rows: [
       ['Academics', 'How to find your next exam, class or assignment deadline.', 'Ask about coursework'],
       ['Campus services', 'Get a straight answer about offices, hours and processes.', 'Find a service'],
@@ -84,22 +87,16 @@ export const moduleDetails = {
       ['Mid-semester examination schedule', 'Academics · Today, 10:32 am · Applies to all second-year students', 'Review schedule'],
       ['Scholarship renewal applications', 'Student affairs · Today, 9:15 am · Deadline approaching', 'Submit application'],
       ['Campus blood donation drive', 'Community · Yesterday, 4:40 pm · Voluntary', 'See event details'],
-      ['Library extended hours this week', 'Library · Oct 2, 11:20 am · Applies to all students', 'View library hours'],
     ],
   },
   food: {
-    eyebrow: 'GOOD FOOD, NO GUESSWORK',
-    title: 'Food & dining',
-    description: 'See what is cooking, skip the queue and find a seat that suits you.',
+    eyebrow: 'CAMPUS DINING',
+    title: 'Food & Dine In',
+    description: 'Open the configured Canteen menu or view College Mess information.',
     icon: 'Utensils',
     accent: 'amber',
-    stats: [['North mess', 'Moderately busy'], ['West canteen', '12-minute wait'], ['Breakfast', 'Served until 10:30']],
-    rows: [
-      ['Today at North mess', 'Lunch · 12:00–2:30 pm · 68% capacity · Moderate wait', 'See today’s menu'],
-      ['Sunrise canteen', 'Grilled paneer wrap · ₹90 · Ready in about 12 minutes', 'Pre-order food'],
-      ['Garden café', 'Open · Quieter seating · Fresh coffee and snacks', 'Find a table'],
-      ['Meal plan & payments', 'View your campus food balance and transaction history.', 'Manage account'],
-    ],
+    stats: [],
+    rows: [],
   },
   navigation: {
     eyebrow: 'YOUR NEXT DESTINATION',
@@ -139,12 +136,17 @@ export const moduleDetails = {
     rows: [['Design week · Opening night', 'Thursday, Oct 8 · 5:00 pm · Main auditorium', 'Explore event'], ['Open mic at the courtyard', 'Friday, Oct 9 · 6:30 pm · Student courtyard', 'Save a place'], ['Photography club walk', 'Saturday, Oct 10 · 7:00 am · Main gate', 'Join the group']],
   },
   hostel: {
-    eyebrow: 'MADE FOR YOUR EVERYDAY',
+    eyebrow: 'YOUR CAMPUS ACCOMMODATION',
     title: 'Hostel life',
-    description: 'Requests, notices, visits and essentials for life at your residence.',
+    description: 'View your room and allotment, find relevant roommate information, and request maintenance.',
     icon: 'Building2', accent: 'blue',
+<<<<<<< HEAD
     stats: [['Your room', 'B-204 · North residence'], ['1 open', 'Maintenance requests'], ['Quiet hours', '10:00 pm onwards']],
     rows: [['Room maintenance', 'Track your repair request or report a new issue.', 'View requests'], ['Hostel visitor registration', 'Register an upcoming guest visit with the warden.', 'Register visitor'], ['Residence notices', 'The latest updates from your hostel community.', 'Read updates']],
+=======
+    stats: [],
+    rows: [['My Room', 'View your hostel, block, floor, room number, and roommates.', 'View room'], ['Hostel allotment', 'View your current hostel room and allotment history.', 'View allotment'], ['Maintenance', 'Submit a room maintenance request and track its status.', 'View requests']],
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   },
   'lost-found': {
     eyebrow: 'FOUND SOMETHING? LOOKING FOR IT?',
@@ -168,7 +170,11 @@ export const moduleDetails = {
     description: 'A clear operational picture for campus teams, with the context behind every number.',
     icon: 'ChartNoAxesCombined', accent: 'blue',
     stats: [['2,418', 'Students on campus'], ['94%', 'Campus services availability'], ['−18%', 'Dining peak wait this month']],
+<<<<<<< HEAD
     rows: [['Campus engagement', 'Events, facilities, programs · Updated today', 'View dashboard'], ['Dining & occupancy', 'Meal service demand, wait times, campus capacity', 'Explore insights'], ['Student wellbeing', 'Service usage and resolution trends · Aggregated', 'Review patterns'], ['Operations overview', 'Facilities and open service requests', 'Open report']],
+=======
+    rows: [['Campus engagement', 'Events, facilities, programs · Updated today', 'View dashboard'], ['Dining & occupancy', 'Meal service demand, wait times, campus capacity', 'Explore insights'], ['Student wellbeing', 'Service usage and resolution trends · Aggregated', 'Review patterns'], ['Operations overview', 'Facilities, campus services and open service requests', 'Open report']],
+>>>>>>> e957f2e274225976ecab5017e65c01a1d87d0a99
   },
 }
 
