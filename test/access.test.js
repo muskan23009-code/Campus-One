@@ -34,6 +34,14 @@ test('Lost & Found is a dedicated main section visible to all five roles', () =>
   }
 })
 
+test('Settings is available to authenticated campus roles except the isolated Canteen Staff app', () => {
+  const item = navigationGroups.flatMap((group) => group.items).find((entry) => entry.id === 'settings')
+  assert.deepEqual({ label: item.label, icon: item.icon }, { label: 'Settings', icon: 'Settings2' })
+  for (const role of Object.values(APP_ROLES)) {
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [] }, 'settings'), role !== APP_ROLES.CANTEEN, `${role} Settings route access`)
+  }
+})
+
 test('student routes exclude every management page', () => {
   const student = { id: 'PM-S1047', name: 'Student Example', role: APP_ROLES.STUDENT, modules: [] }
   for (const page of ['overview', 'copilot', 'notices', 'food', 'navigation', 'directory', 'complaints', 'sports', 'events', 'hostel', 'lost-found', 'emergency']) {

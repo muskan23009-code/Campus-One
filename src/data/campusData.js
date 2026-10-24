@@ -33,6 +33,7 @@ export const navigationGroups = [
       { id: 'hostel', label: 'Hostel', icon: 'Building2' },
       { id: 'emergency', label: 'Emergency', icon: 'ShieldAlert' },
       { id: 'analytics', label: 'Campus insights', icon: 'ChartNoAxesCombined' },
+      { id: 'settings', label: 'Settings', icon: 'Settings2' },
     ],
   },
   {

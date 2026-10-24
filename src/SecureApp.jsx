@@ -258,7 +258,7 @@ export default function SecureApp() {
   const title = titles[activePage] || 'Overview'
   if (!user.mustChangePassword && user.role === APP_ROLES.CANTEEN && !['profile', 'settings'].includes(activePage)) return <div className="app-shell canteen-staff-shell"><Canteen user={user} onNotify={showToast} onLogout={signOut} onNavigate={(page) => applyRoute(page)}/>{error && <div className="toast-notice toast-error"><span className="toast-icon"><ShieldAlert size={14}/></span><span>{error}</span><button aria-label="Dismiss notification" onClick={() => setError('')}><X size={14}/></button></div>}{toast && <div className="toast-notice"><span className="toast-icon"><Check size={14}/></span><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14}/></button></div>}</div>
 
-  return <div className="app-shell">
+  return <div className={`app-shell${uiPreferences.layoutDensity === 'compact' ? ' density-compact' : ''}`}>
     {!user.mustChangePassword && <>
       <Sidebar activePage={activePage} user={user} onNavigate={(page) => applyRoute(page)} onLogout={signOut} mobileOpen={mobileNav} onClose={() => setMobileNav(false)}/>
       <main className="main-area">
@@ -292,7 +292,7 @@ export default function SecureApp() {
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-        {titles[activePage] && !['overview', 'profile', 'settings', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+  {titles[activePage] && !['overview', 'profile', 'settings', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}
