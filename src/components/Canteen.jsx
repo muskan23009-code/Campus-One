@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, CircleAlert, Clock3, Minus, Plus, Search, ShoppingBag, Utensils, X } from 'lucide-react'
+import { ArrowLeft, Check, CircleAlert, Clock3, Minus, Plus, Search, Settings2, ShoppingBag, Utensils, UserRound, X } from 'lucide-react'
 import { api } from '../api/client'
 
 const STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'REJECTED']
@@ -125,7 +125,7 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
     <div className="module-breadcrumb">{onBack && <button className="canteen-back-link" onClick={onBack}><ArrowLeft size={13}/>Food & Dine In</button>}CAMPUS <span>›</span> CANTEEN</div>
     <section className="module-hero canteen-hero">
       <div className="module-title-area"><span className="module-icon"><Utensils size={20}/></span><span className="module-eyebrow">PURAN MURTI VIDYAPEETH · FRESHLY MADE</span><h1>{manager ? 'Canteen dashboard' : 'Canteen'}<span className="module-title-period">.</span></h1><p>{manager ? 'Review incoming orders and update each order through delivery.' : 'Browse the menu, choose your favourites and pre-order from campus.'}</p></div>
-      {user.role === 'Canteen Staff' && <button className="canteen-signout" onClick={onLogout}>Sign out</button>}
+      {user.role === 'Canteen Staff' && <div className="canteen-account-actions"><button className="canteen-profile-link" onClick={() => onNavigate?.('profile')}><UserRound size={14}/>My Profile</button><button className="canteen-profile-link" onClick={() => onNavigate?.('settings')}><Settings2 size={14}/>Settings</button><button className="canteen-signout" onClick={onLogout}>Sign out</button></div>}
     </section>
     {error && <div className="management-alert canteen-alert" role="alert"><CircleAlert size={15}/>{error}<button onClick={() => setError('')} aria-label="Dismiss"><X size={14}/></button></div>}
     {user.role === 'Canteen Staff' && notifications.some((notification) => !notification.readAt) && <section className="canteen-notifications"><span className="section-eyebrow">ORDER UPDATES</span>{notifications.filter((notification) => !notification.readAt).slice(0, 4).map((notification) => <button key={notification.id} onClick={async () => { try { await api(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: 'PATCH', body: {} }); setNotifications((current) => current.map((entry) => entry.id === notification.id ? { ...entry, readAt: new Date().toISOString() } : entry)); if (notification.target === 'canteen') setTab('orders') } catch (reason) { setError(reason.message) } }}><strong>{notification.title}</strong><span>{notification.message}</span><small>{new Date(notification.createdAt).toLocaleString()} · View</small></button>)}</section>}

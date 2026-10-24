@@ -294,8 +294,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     return user || null
   }
 
-  function saveSession(response, user, request) {
-    response.setHeader('Set-Cookie', sessionCookie(signSession(user, sessionSecret), secureRequest(request)))
+  function saveSession(response, user, request, remember = false) {
+    response.setHeader('Set-Cookie', sessionCookie(signSession(user, sessionSecret, Date.now(), remember), secureRequest(request), remember))
   }
 
   function addNotification(data, { recipientUserId = '', recipientRequestId = '', title, message, referenceId = '', target = '', type = 'GENERAL' }) {
@@ -784,6 +784,9 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       pathname === '/api/canteen/orders' && request.method === 'GET'
       || /^\/api\/canteen\/orders\/[^/]+$/.test(pathname) && request.method === 'PATCH'
       || pathname === '/api/auth/me' && request.method === 'GET'
+      || pathname === '/api/auth/profile' && request.method === 'GET'
+      || pathname === '/api/auth/session-preference' && ['GET', 'POST'].includes(request.method)
+      || pathname === '/api/auth/profile' && request.method === 'PATCH'
       || pathname === '/api/auth/password' && request.method === 'POST'
       || pathname === '/api/auth/logout' && request.method === 'POST'
       || pathname === '/api/notifications' && request.method === 'GET'
@@ -1294,10 +1297,54 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return json(response, 200, { user: publicUser(user), modules: modulesForUser(user) })
     }
 
+    if (pathname === '/api/auth/session-preference' && request.method === 'GET') {
+      const session = verifySession(cookieValue(request, 'campus_session'), sessionSecret)
+      return json(response, 200, { enabled: session?.remember === true })
+    }
+
+    if (pathname === '/api/auth/session-preference' && request.method === 'POST') {
+      const input = await body(request)
+      if (typeof input.enabled !== 'boolean' || Object.keys(input).some((key) => key !== 'enabled')) {
+        return reject(response, 400, 'Choose whether to remember this device.')
+      }
+      saveSession(response, user, request, input.enabled)
+      return json(response, 200, { enabled: input.enabled })
+    }
+
+    if (pathname === '/api/auth/profile' && request.method === 'GET') {
+      return json(response, 200, { user: publicUser(user, { includePhoto: true }) })
+    }
+
+    if (pathname === '/api/auth/profile' && request.method === 'PATCH') {
+      const input = await body(request)
+      const allowedFields = new Set(['mobile', 'profilePhoto'])
+      if (Object.keys(input).some((field) => !allowedFields.has(field))) {
+        return reject(response, 400, 'Only your phone number and profile photo can be updated.')
+      }
+      if (!Object.keys(input).length) return reject(response, 400, 'Choose at least one profile field to update.')
+
+      const updates = {}
+      if (Object.hasOwn(input, 'mobile')) {
+        const mobile = typeof input.mobile === 'string' ? input.mobile.trim() : ''
+        if (!/^\+?[\d\s().-]{7,20}$/.test(mobile)) return reject(response, 400, 'Enter a valid mobile number.')
+        updates.mobile = mobile
+      }
+      if (Object.hasOwn(input, 'profilePhoto')) updates.profilePhoto = validatePhoto(input.profilePhoto)
+
+      const updated = await store.transact((data) => {
+        const target = data.users.find((candidate) => candidate.id === user.id && candidate.active && candidate.sessionVersion === user.sessionVersion)
+        if (!target) throw Object.assign(new Error('Your session has expired. Sign in again.'), { status: 401 })
+        Object.assign(target, updates)
+        return target
+      })
+      return json(response, 200, { user: publicUser(updated, { includePhoto: true }) })
+    }
+
     if (pathname === '/api/auth/password' && request.method === 'POST') {
       const input = await body(request)
-      if (!await verifyPassword(input.currentPassword, user.credentials)) return reject(response, 400, 'Your current password is incorrect.')
       if (!validatePassword(input.newPassword)) return reject(response, 400, 'Choose a password with at least 12 characters.')
+      if (input.newPassword !== input.confirmNewPassword) return reject(response, 400, 'Your new passwords do not match.')
+      if (!await verifyPassword(input.currentPassword, user.credentials)) return reject(response, 400, 'Your current password is incorrect.')
       if (input.newPassword === input.currentPassword) return reject(response, 400, 'Your new password must be different from the current password.')
       const credentials = await hashPassword(input.newPassword)
       const updated = await store.transact((data) => {
@@ -1308,7 +1355,8 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         target.sessionVersion += 1
         return target
       })
-      saveSession(response, updated, request)
+      const remembered = verifySession(cookieValue(request, 'campus_session'), sessionSecret)?.remember === true
+      saveSession(response, updated, request, remembered)
       return json(response, 200, { user: publicUser(updated), modules: modulesForUser(updated) })
     }
 

@@ -16,7 +16,7 @@ export default function PasswordChangeView({ user, onChanged }) {
     if (newPassword !== confirmation) { setError('The new passwords do not match.'); return }
     setBusy(true)
     try {
-      const result = await api('/api/auth/password', { method: 'POST', body: { currentPassword, newPassword } })
+      const result = await api('/api/auth/password', { method: 'POST', body: { currentPassword, newPassword, confirmNewPassword: confirmation } })
       setCurrentPassword('')
       setNewPassword('')
       setConfirmation('')

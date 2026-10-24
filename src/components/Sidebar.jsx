@@ -3,12 +3,12 @@ import {
   Activity, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown,
   ChevronLeft, ContactRound, HeartPulse, LayoutDashboard,
   GraduationCap, Map, Megaphone, MessageSquareWarning, PackageSearch, Settings2, ShieldAlert,
-  Sparkles, Trophy, UserRoundCheck, UsersRound, Utensils, X,
+  Sparkles, Trophy, UserRound, UserRoundCheck, UsersRound, Utensils, X,
 } from 'lucide-react'
 import { navigationGroups } from '../data/campusData'
 import { canSeePage } from '../auth/access'
 
-const icons = { LayoutDashboard, Sparkles, Megaphone, Utensils, Map, ContactRound, MessageSquareWarning, Activity, CalendarDays, Building2, PackageSearch, ShieldAlert, ChartNoAxesCombined, UsersRound, Settings2, Trophy, UserRoundCheck, GraduationCap }
+const icons = { LayoutDashboard, Sparkles, Megaphone, Utensils, Map, ContactRound, MessageSquareWarning, Activity, CalendarDays, Building2, PackageSearch, ShieldAlert, ChartNoAxesCombined, UsersRound, Settings2, Trophy, UserRound, UserRoundCheck, GraduationCap }
 
 export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose, user, onLogout }) {
   const [collapsed, setCollapsed] = useState(false)

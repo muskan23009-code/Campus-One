@@ -51,6 +51,20 @@ export const navigationGroups = [
     ],
   },
   {
+    label: 'ACCOUNT',
+    items: [
+      { id: 'profile', label: 'Profile', icon: 'UserRound' },
+      { id: 'settings', label: 'Settings', icon: 'Settings2' },
+    ],
+  },
+  {
+    label: 'CANTEEN',
+    roles: ['Canteen Staff'],
+    items: [
+      { id: 'canteen', label: 'Canteen orders', icon: 'Utensils' },
+    ],
+  },
+  {
     label: 'DEPARTMENT',
     roles: ['HOD'],
     items: [

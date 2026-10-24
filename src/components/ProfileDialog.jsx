@@ -16,7 +16,7 @@ export default function ProfileDialog({ user, onClose, onLogout, onUserChange, o
     setError('')
     setBusy(true)
     try {
-      const result = await api('/api/auth/password', { method: 'POST', body: { currentPassword, newPassword } })
+      const result = await api('/api/auth/password', { method: 'POST', body: { currentPassword, newPassword, confirmNewPassword: confirmation } })
       setCurrentPassword('')
       setNewPassword('')
       setConfirmation('')

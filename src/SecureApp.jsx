@@ -10,7 +10,7 @@ import DepartmentDashboard from './components/DepartmentDashboard.jsx'
 import LostFoundCenter from './components/LostFoundCenter.jsx'
 import ModuleView from './components/ModuleView.jsx'
 import PasswordChangeView from './components/PasswordChangeView.jsx'
-import ProfileDialog from './components/ProfileDialog.jsx'
+import ProfilePage from './components/ProfilePage.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import SportsManagement from './components/SportsManagement.jsx'
 import StudentSports from './components/StudentSports.jsx'
@@ -25,9 +25,12 @@ import CampusVoice from './components/CampusVoice.jsx'
 import SkillExchange from './components/SkillExchange.jsx'
 import TeacherReview from './components/TeacherReview.jsx'
 import { navigationGroups } from './data/campusData'
+import SettingsPage from './components/SettingsPage.jsx'
+import { loadUiPreferences, saveUiPreferences } from './settings/preferences.js'
 
 const titles = Object.fromEntries(navigationGroups.flatMap((group) => group.items.map((item) => [item.id, item.label])))
-titles.profile = 'My account'
+titles.profile = 'My Profile'
+titles.settings = 'Settings'
 titles['campus-management'] = 'Campus management'
 titles['sports-management'] = 'Sports management'
 titles.users = 'User management'
@@ -68,12 +71,23 @@ export default function SecureApp() {
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [modal, setModal] = useState('')
+  const [uiPreferenceState, setUiPreferenceState] = useState(loadUiPreferences)
+  const { preferences: uiPreferences, storageAvailable: uiStorageAvailable } = uiPreferenceState
 
   const showToast = useCallback((message) => setToast(message), [])
 
+  const updateUiPreferences = useCallback((nextPreferences) => {
+    try {
+      const savedPreferences = saveUiPreferences(nextPreferences)
+      setUiPreferenceState({ preferences: savedPreferences, storageAvailable: true })
+      return true
+    } catch {
+      setUiPreferenceState({ preferences: nextPreferences, storageAvailable: false })
+      return false
+    }
+  }, [])
+
   const applyRoute = useCallback((page, { replace = false, referenceId = '', messFeedback = false } = {}) => {
-    if (page === 'profile') { setModal('profile'); return }
     if (user && !canSeePage(user, page)) page = 'unauthorized'
     setRequestReference(referenceId)
     setActivePage(page)
@@ -95,7 +109,6 @@ export default function SecureApp() {
     try {
       await api('/api/auth/logout', { method: 'POST' })
       setUser(null)
-      setModal('')
       setMode('roles')
       setActivePage('overview')
       setSelectedRole(null)
@@ -167,6 +180,11 @@ export default function SecureApp() {
   useEffect(() => { document.title = `${titles[activePage] || 'Campus One'} | Campus One` }, [activePage])
 
   useEffect(() => {
+    document.documentElement.dataset.campusTheme = uiPreferences.theme
+    document.documentElement.dataset.reduceMotion = String(uiPreferences.reduceMotion)
+  }, [uiPreferences])
+
+  useEffect(() => {
     if (mode !== 'authenticated') return undefined
     function onPopState() {
       const referenceId = new URLSearchParams(window.location.search).get('request') || ''
@@ -220,7 +238,7 @@ export default function SecureApp() {
   }
 
   function handleAction(message) {
-    if (message === 'Your student account' || message === 'Your campus account') { setModal('profile'); return }
+    if (message === 'Your student account' || message === 'Your campus account') { applyRoute('profile'); return }
     if (message.includes('Tell us') || message.includes('new request') || message.includes('suggestion') || message.includes('request')) {
       applyRoute('complaints')
       return
@@ -238,7 +256,7 @@ export default function SecureApp() {
   if (!user) return null
 
   const title = titles[activePage] || 'Overview'
-  if (!user.mustChangePassword && user.role === APP_ROLES.CANTEEN) return <div className="app-shell canteen-staff-shell"><Canteen user={user} onNotify={showToast} onLogout={signOut}/>{error && <div className="toast-notice toast-error"><span className="toast-icon"><ShieldAlert size={14}/></span><span>{error}</span><button aria-label="Dismiss notification" onClick={() => setError('')}><X size={14}/></button></div>}{toast && <div className="toast-notice"><span className="toast-icon"><Check size={14}/></span><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14}/></button></div>}</div>
+  if (!user.mustChangePassword && user.role === APP_ROLES.CANTEEN && !['profile', 'settings'].includes(activePage)) return <div className="app-shell canteen-staff-shell"><Canteen user={user} onNotify={showToast} onLogout={signOut} onNavigate={(page) => applyRoute(page)}/>{error && <div className="toast-notice toast-error"><span className="toast-icon"><ShieldAlert size={14}/></span><span>{error}</span><button aria-label="Dismiss notification" onClick={() => setError('')}><X size={14}/></button></div>}{toast && <div className="toast-notice"><span className="toast-icon"><Check size={14}/></span><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14}/></button></div>}</div>
 
   return <div className="app-shell">
     {!user.mustChangePassword && <>
@@ -246,6 +264,17 @@ export default function SecureApp() {
       <main className="main-area">
         <TopBar pageTitle={title} user={user} onNavigate={(page, referenceId) => applyRoute(page, { referenceId })} onAction={handleAction} onMobileMenu={() => setMobileNav(true)}/>
         {activePage === 'overview' && <Dashboard user={user} onNavigate={(page) => applyRoute(page)} onAction={handleAction} adminView={user.role === APP_ROLES.ADMIN}/>}
+        {activePage === 'profile' && <ProfilePage user={user} onUserChange={setUser} onNotify={showToast}/>}
+        {activePage === 'settings' && <SettingsPage
+          preferences={uiPreferences}
+          storageAvailable={uiStorageAvailable}
+          onUpdatePreferences={(next) => {
+            const saved = updateUiPreferences(next)
+            showToast(saved ? 'Settings saved on this device.' : 'Setting applied for this session, but browser storage is unavailable. It was not saved.')
+          }}
+          onNavigate={(page) => applyRoute(page)}
+          onLogout={signOut}
+        />}
         {activePage === 'unauthorized' && <AccessNotice onHome={() => applyRoute('overview')} message="Your account doesn’t have permission to open that campus service."/>}
         {activePage === 'not-found' && <AccessNotice onHome={() => applyRoute('overview')} message="That campus page doesn’t exist or is no longer available."/>}
         {activePage === 'users' && user.role === APP_ROLES.ADMIN && <AdministrationUsers currentUser={user} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
@@ -263,13 +292,12 @@ export default function SecureApp() {
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+        {titles[activePage] && !['overview', 'profile', 'settings', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}
     {error && <div className="toast-notice toast-error"><span className="toast-icon"><ShieldAlert size={14}/></span><span>{error}</span><button aria-label="Dismiss notification" onClick={() => setError('')}><X size={14}/></button></div>}
     {toast && <div className="toast-notice"><span className="toast-icon"><Check size={14}/></span><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14}/></button></div>}
-    {modal === 'profile' && <ProfileDialog user={user} onClose={() => setModal('')} onLogout={signOut} onUserChange={setUser} onNotify={showToast}/>}
   </div>
 }
 

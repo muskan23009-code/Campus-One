@@ -15,6 +15,17 @@ test('Complaint & Issue Tracker stays available to existing roles and not Cantee
   }
 })
 
+test('Profile navigation is available to every authenticated role', () => {
+  const profileItem = navigationGroups.flatMap((group) => group.items).find((item) => item.id === 'profile')
+  assert.deepEqual({ label: profileItem.label, icon: profileItem.icon }, { label: 'Profile', icon: 'UserRound' })
+  const settingsItem = navigationGroups.flatMap((group) => group.items).find((item) => item.id === 'settings')
+  assert.deepEqual({ label: settingsItem.label, icon: settingsItem.icon }, { label: 'Settings', icon: 'Settings2' })
+  for (const role of Object.values(APP_ROLES)) {
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [] }, 'profile'), true, `${role} should access their own profile`)
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: [] }, 'settings'), true, `${role} should access their settings`)
+  }
+})
+
 test('Lost & Found is a dedicated main section visible to all five roles', () => {
   const item = navigationGroups.flatMap((group) => group.items).find((entry) => entry.id === 'lost-found')
   assert.deepEqual({ label: item.label, icon: item.icon }, { label: 'Lost & Found', icon: 'PackageSearch' })
@@ -153,10 +164,11 @@ test('administration receives every management capability', () => {
   assert.equal(canSeePage(administrator, 'lost-found'), true)
 })
 
-test('Canteen Staff can access only the Canteen dashboard', () => {
+test('Canteen Staff can access the Canteen dashboard and their own profile', () => {
   const canteenStaff = { id: 'PM-CS001', name: 'Canteen Staff', role: APP_ROLES.CANTEEN, modules: ['overview', 'complaints'] }
   assert.equal(canSeePage(canteenStaff, 'canteen'), true)
-  for (const page of ['overview', 'profile', 'copilot', 'food', 'complaints', 'lost-found', 'sports-management', 'analytics', 'users', 'campus-management']) {
+  assert.equal(canSeePage(canteenStaff, 'profile'), true)
+  for (const page of ['overview', 'copilot', 'food', 'complaints', 'lost-found', 'sports-management', 'analytics', 'users', 'campus-management']) {
     assert.equal(canSeePage(canteenStaff, page), false, `Canteen Staff must not access ${page}`)
   }
 })

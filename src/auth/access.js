@@ -34,6 +34,8 @@ export const LOGIN_ROLES = Object.freeze([
 
 export function canSeePage(user, page) {
   if (!user) return false
+  if (page === 'profile') return true
+  if (page === 'settings') return true
   if (page === 'teacher-review') return [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.ADMIN].includes(user.role)
   if (page === 'campus-voice') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
   if (page === 'skill-exchange') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
@@ -44,7 +46,7 @@ export function canSeePage(user, page) {
   if (user.role === APP_ROLES.ADMIN) {
     return page === 'unauthorized' || page === 'not-found' || page === 'overview' || page === 'profile' || page === 'campus-management' || page === 'sports-management' || page === 'users' || [...STUDENT_ALLOWED_MODULES, 'teacher-review', 'canteen', 'analytics'].includes(page)
   }
-  if (page === 'overview' || page === 'profile' || page === 'unauthorized' || page === 'not-found') return true
+  if (page === 'overview' || page === 'unauthorized' || page === 'not-found') return true
   if (user.role === APP_ROLES.STUDENT) return STUDENT_ALLOWED_MODULES.includes(page)
   if (user.role === APP_ROLES.STAFF) return [...STAFF_DEFAULT_MODULES, ...(user.modules || [])].includes(page)
   if (user.role === APP_ROLES.HOD) return ['overview', 'notices', 'complaints', 'lost-found', 'food', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review'].includes(page)

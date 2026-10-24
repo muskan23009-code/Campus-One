@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 
 const scrypt = promisify(scryptCallback)
 const SESSION_LIFETIME_SECONDS = 60 * 60 * 8
+const REMEMBERED_SESSION_LIFETIME_SECONDS = 60 * 60 * 24 * 30
 const PASSWORD_HASH_BYTES = 64
 const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
 
@@ -44,8 +45,14 @@ function safeEqualText(left, right) {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-export function signSession(user, secret, now = Date.now()) {
-  const payload = Buffer.from(JSON.stringify({ sub: user.id, ver: user.sessionVersion, exp: Math.floor(now / 1000) + SESSION_LIFETIME_SECONDS })).toString('base64url')
+export function signSession(user, secret, now = Date.now(), remember = false) {
+  const lifetime = remember ? REMEMBERED_SESSION_LIFETIME_SECONDS : SESSION_LIFETIME_SECONDS
+  const payload = Buffer.from(JSON.stringify({
+    sub: user.id,
+    ver: user.sessionVersion,
+    exp: Math.floor(now / 1000) + lifetime,
+    remember: Boolean(remember),
+  })).toString('base64url')
   const signature = createHmac('sha256', secret).update(payload).digest('base64url')
   return `${payload}.${signature}`
 }
@@ -65,8 +72,9 @@ export function verifySession(token, secret, now = Date.now()) {
   }
 }
 
-export function sessionCookie(session, secure) {
-  return `campus_session=${session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_LIFETIME_SECONDS}${secure ? '; Secure' : ''}`
+export function sessionCookie(session, secure, remember = false) {
+  const lifetime = remember ? REMEMBERED_SESSION_LIFETIME_SECONDS : SESSION_LIFETIME_SECONDS
+  return `campus_session=${session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${lifetime}${secure ? '; Secure' : ''}`
 }
 
 export function clearSessionCookie(secure) {
