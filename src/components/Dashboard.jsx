@@ -1,41 +1,19 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, Check,
-  ChevronRight, CircleHelp, Clock3, Compass, Flame, GraduationCap,
-  HeartPulse, MapPin, Sparkles, Utensils, Waves,
+  ArrowDownRight, ArrowRight, CalendarDays, Check,
+  ChevronRight, Clock3, Flame, GraduationCap,
+  HeartPulse, MapPin, MessageSquareWarning, PackageSearch, Sparkles, Utensils,
 } from 'lucide-react'
-import { campusPlaces, notices } from '../data/campusData'
 import { api } from '../api/client'
+import { campusPlaces, notices } from '../data/campusData'
 
 const day = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
 
 export default function Dashboard({ user, onNavigate, onAction, adminView }) {
-  const [selectedMeal, setSelectedMeal] = useState('Lunch')
-  const [selectedItem, setSelectedItem] = useState('Dal makhani & jeera rice')
   const [prompt, setPrompt] = useState('')
-  const [currentOrder, setCurrentOrder] = useState(null)
-  const [orderBusy, setOrderBusy] = useState(false)
-  const [messEstimate, setMessEstimate] = useState(null)
   const [weather, setWeather] = useState(null)
   const [weatherStatus, setWeatherStatus] = useState('loading')
   const [weatherRetry, setWeatherRetry] = useState(0)
-  const mealMenus = {
-    Breakfast: [['Idli with sambhar', 'South Indian · Vegetarian'], ['Aloo paratha', 'North Indian · Vegetarian'], ['Masala omelette', 'Protein-rich · Contains egg']],
-    Lunch: [['Dal makhani & jeera rice', 'North Indian · Vegetarian'], ['Paneer tikka wrap', 'Chef’s special · Vegetarian'], ['Seasonal fruit bowl', 'Fresh today · Vegan']],
-    Dinner: [['Matar paneer & roti', 'North Indian · Vegetarian'], ['Veg noodles', 'Indo-Chinese · Vegetarian'], ['Kadhi chawal', 'Home-style · Vegetarian']],
-  }
-
-  useEffect(() => {
-    let active = true
-    if (!['Student', 'Staff', 'Administration'].includes(user.role)) return () => { active = false }
-    api('/api/campus/food').then((result) => {
-      if (active) setMessEstimate(result.records.find((record) => record.id === 'food-mess') || result.records.find((record) => record.title.toLowerCase().includes('mess')) || null)
-    }).catch(() => {})
-    if (user.role === 'Student') api('/api/food/orders').then((result) => {
-      if (active && result.orders.length) setCurrentOrder(result.orders[0])
-    }).catch(() => {})
-    return () => { active = false }
-  }, [user.role])
 
   useEffect(() => {
     let active = true
@@ -75,19 +53,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
       controller?.abort()
     }
   }, [weatherRetry])
-
-  async function preorder() {
-    if (currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing') {
-      onAction(`${currentOrder.orderNumber} is ${currentOrder.status.toLowerCase()}. Track it at Food & Dining.`)
-      return
-    }
-    setOrderBusy(true)
-    try {
-      const result = await api('/api/food/orders', { method: 'POST', body: { meal: selectedMeal, item: selectedItem } })
-      setCurrentOrder(result.order)
-      onAction(`Order ${result.order.orderNumber} placed. Its current status is Placed.`)
-    } catch (reason) { onAction(`Canteen pre-order failed: ${reason.message}`) } finally { setOrderBusy(false) }
-  }
 
   function weatherCondition(code) {
     if (code === 0) return 'Clear'
@@ -139,8 +104,7 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 
       <section className="metrics-row" aria-label="Campus snapshot">
         <div className="metric-card"><span className="metric-icon icon-rust"><CalendarDays size={17} /></span><div className="metric-copy"><span className="metric-label">YOUR NEXT CLASS</span><strong>Data structures</strong><span className="metric-sub">10:30 am · Block A, Room 204</span></div><span className="metric-indicator indicator-rust"><Clock3 size={13} /> IN 24 MIN</span></div>
-        <div className="metric-card"><span className="metric-icon icon-leaf"><Waves size={18} /></span><div className="metric-copy"><span className="metric-label">NORTH MESS · MANUAL ESTIMATE</span><strong>{messEstimate?.crowdLevel ? `${messEstimate.crowdLevel} crowd` : 'Moderately busy'}</strong><span className="metric-sub">{messEstimate ? `${messEstimate.occupancyPercent ?? 68}% occupancy · ${messEstimate.estimatedWaitMinutes ?? 8} min wait` : '68% occupancy · 8 min wait'}</span></div><span className="occupancy-indicator"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
-        <div className="metric-card"><span className="metric-icon icon-blue"><Compass size={17} /></span><div className="metric-copy"><span className="metric-label">CAMPUS SHUTTLE</span><strong>Route S-04 · Gate 2</strong><span className="metric-sub">Next pickup in 8 minutes</span></div><span className="metric-direction">ON TIME <ArrowUpRight size={12} /></span></div>
+        <button type="button" className="metric-card dining-shortcut" onClick={() => onNavigate('food')}><span className="metric-icon icon-leaf"><Utensils size={17} /></span><span className="metric-copy"><span className="metric-label">CAMPUS DINING</span><strong>Canteen & College Mess</strong><span className="metric-sub">Menus, orders, and meal timings</span></span><ArrowRight size={15} /></button>
       </section>
 
       <section className="main-dashboard-grid">
@@ -153,11 +117,8 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
         </div>
 
         <aside className="side-column">
-          <section className="meal-panel"><div className="meal-header"><div><span className="section-eyebrow">FRESH FROM THE MESS</span><h3>On today’s menu</h3></div><span className="meal-icon"><Utensils size={17} /></span></div><div className="meal-tabs" role="tablist" aria-label="Meal time">{['Breakfast', 'Lunch', 'Dinner'].map((meal) => <button key={meal} role="tab" aria-selected={selectedMeal === meal} className={selectedMeal === meal ? 'meal-tab-active' : ''} onClick={() => { setSelectedMeal(meal); setSelectedItem(mealMenus[meal][0][0]) }}>{meal}</button>)}</div><div className="menu-list">{mealMenus[selectedMeal].map(([name, detail], index) => <button type="button" className={`menu-item ${selectedItem === name ? 'menu-item-selected' : ''}`} aria-pressed={selectedItem === name} key={name} onClick={() => setSelectedItem(name)}><span className={`menu-index ${index === 0 ? 'menu-index-featured' : ''}`}>{String(index + 1).padStart(2, '0')}</span><span className="menu-item-copy"><strong>{name}</strong><span>{detail}</span></span>{index === 0 && <span className="chef-pick">TODAY’S PICK</span>}</button>)}</div><div className="order-row"><div className="menu-service"><span className="service-dot" />{currentOrder ? `${currentOrder.orderNumber} · ${currentOrder.status}` : `Serving until 2:30 pm · ${selectedItem}`}</div><button className={`order-button ${orderBusy ? 'order-complete' : ''}`} disabled={orderBusy || user.role !== 'Student'} onClick={preorder}>{orderBusy ? 'Placing…' : currentOrder?.status === 'Placed' || currentOrder?.status === 'Preparing' ? <>Track order <ArrowRight size={13}/></> : <>Pre-order <ArrowRight size={13} /></>}</button></div></section>
-
-          <button className="event-panel" onClick={() => onNavigate('events')}><div className="event-image" /><div className="event-info"><span className="event-label"><CalendarDays size={12} /> COMING UP ON CAMPUS</span><strong>Ideas look better<br />when shared.</strong><span className="event-name">Design week · Opening night</span><span className="event-time">THU, OCT 8 <i /> 5:00 PM <i /> MAIN AUDITORIUM</span></div><span className="event-arrow"><ArrowUpRight size={15} /></span></button>
-
-          <button className="feedback-panel" onClick={() => onNavigate('complaints')}><span className="feedback-icon"><CircleHelp size={18} /></span><span className="feedback-text"><strong>Something on your mind?</strong><span>We read every suggestion.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
+          <button className="feedback-panel lost-found-dashboard-link" onClick={() => onNavigate('lost-found')}><span className="feedback-icon"><PackageSearch size={18} /></span><span className="feedback-text"><strong>Lost & Found</strong><span>Report or search for a campus item.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
+          <button className="feedback-panel" onClick={() => onNavigate('complaints')}><span className="feedback-icon"><MessageSquareWarning size={18} /></span><span className="feedback-text"><strong>Complaint & Issue Tracker</strong><span>Submit an issue and track updates.</span></span><ArrowDownRight className="feedback-arrow" size={15} /></button>
 
           {adminView && <div className="admin-summary"><span className="section-eyebrow">OPERATIONS SNAPSHOT</span><strong>Campus services are running smoothly.</strong><span>2 requests need attention · 94% availability <ArrowRight size={12} /></span></div>}
         </aside>
@@ -168,6 +129,6 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
 }
 
 function PlaceIcon({ name }) {
-  const icons = { GraduationCap: <GraduationCap size={17} />, LibraryBig: <Compass size={17} />, Utensils: <Utensils size={17} />, HeartPulse: <HeartPulse size={17} /> }
+  const icons = { GraduationCap: <GraduationCap size={17} />, Utensils: <Utensils size={17} />, HeartPulse: <HeartPulse size={17} /> }
   return icons[name]
 }

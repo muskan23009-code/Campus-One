@@ -1,5 +1,6 @@
 {
   "forwardPorts": [5173],
+  "postStartCommand": "bash .devcontainer/start-campus-one.sh",
   "portsAttributes": {
     "5173": {
       "label": "Campus One",

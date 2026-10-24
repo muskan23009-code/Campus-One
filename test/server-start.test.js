@@ -1,29 +1,15 @@
 import { request as httpRequest } from 'node:http'
 import assert from 'node:assert/strict'
-import { mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { loadLocalEnvironment, startServer } from '../server/index.js'
+import { loadProjectEnvironment } from '../server/env.js'
+import { resolveDataDirectory, startServer } from '../server/index.js'
 
 const TEST_ADMIN_ACCESS_CODE = 'test-only-admin-access-code'
-
-test('the backend loads its local environment file', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'campus-one-env-'))
-  const environmentFile = join(directory, '.env.local')
-  const previousAccessCode = process.env.CAMPUS_ADMIN_ACCESS_CODE
-  delete process.env.CAMPUS_ADMIN_ACCESS_CODE
-  try {
-    await writeFile(environmentFile, 'CAMPUS_ADMIN_ACCESS_CODE=test-local-admin-access-code\n')
-    assert.equal(loadLocalEnvironment(environmentFile), true)
-    assert.equal(process.env.CAMPUS_ADMIN_ACCESS_CODE, 'test-local-admin-access-code')
-  } finally {
-    if (previousAccessCode === undefined) delete process.env.CAMPUS_ADMIN_ACCESS_CODE
-    else process.env.CAMPUS_ADMIN_ACCESS_CODE = previousAccessCode
-    await unlink(environmentFile)
-    await rmdir(directory)
-  }
-})
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -47,6 +33,90 @@ function forwardedRequest(target, { host, method = 'GET', origin, secure, cookie
   })
 }
 
+test('project env files load persistently without overriding process-provided values', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'campus-one-env-'))
+  const key = 'CAMPUS_ADMIN_ACCESS_CODE'
+  const original = process.env[key]
+  try {
+    await writeFile(join(directory, '.env'), `${key}=base-test-code\n`)
+    await writeFile(join(directory, '.env.local'), `${key}=local-test-code\n`)
+    delete process.env[key]
+    loadProjectEnvironment(directory)
+    assert.equal(process.env[key], 'local-test-code', 'the local file takes precedence over the base env file')
+
+    process.env[key] = 'process-test-code'
+    loadProjectEnvironment(directory)
+    assert.equal(process.env[key], 'process-test-code', 'Codespaces or deployment environment values take precedence')
+  } finally {
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('the default data directory is project-root anchored and production requires an explicit path', () => {
+  assert.equal(resolveDataDirectory({ directory: null }), resolve(projectRoot, '.data'))
+  assert.equal(resolveDataDirectory({ directory: 'private-data' }), resolve(projectRoot, 'private-data'))
+  assert.throws(
+    () => resolveDataDirectory({ directory: null, production: true }),
+    /CAMPUS_DATA_DIR must point to durable storage/,
+  )
+})
+
+test('a persisted Administration login still opens its role session after server restart', async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-restart-'))
+  const accessCodeKey = 'CAMPUS_ADMIN_ACCESS_CODE'
+  const previousAccessCode = process.env[accessCodeKey]
+  const accessCode = 'private-test-access-code'
+  const password = 'a-secure-campus-test-password'
+  let instance
+  try {
+    process.env[accessCodeKey] = accessCode
+    instance = await startServer({ port: 0, dataDirectory })
+    let url = `http://127.0.0.1:${instance.server.address().port}`
+    let host = `localhost:${instance.server.address().port}`
+    let response = await forwardedRequest(`${url}/api/registrations`, {
+      host,
+      origin: `http://${host}`,
+      method: 'POST',
+      body: {
+        role: 'Administration', name: 'Restart Test Admin', gender: 'Prefer not to say',
+        mobile: '9876543210', email: 'restart-admin@example.edu',
+        designation: 'Campus Administrator', accessCode, password,
+      },
+    })
+    assert.equal(response.status, 201, response.text)
+    const userId = JSON.parse(response.text).user.id
+    await instance.close()
+
+    instance = await startServer({ port: 0, dataDirectory })
+    url = `http://127.0.0.1:${instance.server.address().port}`
+    host = `localhost:${instance.server.address().port}`
+    response = await forwardedRequest(`${url}/api/auth/login`, {
+      host,
+      origin: `http://${host}`,
+      method: 'POST',
+      body: { userId, role: 'Administration', password },
+    })
+    assert.equal(response.status, 200, response.text)
+    const setCookie = response.headers['set-cookie']
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';', 1)[0]
+    assert.ok(cookie)
+
+    response = await forwardedRequest(`${url}/api/auth/me`, { host, cookie })
+    assert.equal(response.status, 200, response.text)
+    const session = JSON.parse(response.text)
+    assert.equal(session.user.id, userId)
+    assert.equal(session.user.role, 'Administration')
+    assert.ok(session.modules.includes('campus-management'))
+  } finally {
+    await instance?.close()
+    if (previousAccessCode === undefined) delete process.env[accessCodeKey]
+    else process.env[accessCodeKey] = previousAccessCode
+    await rm(dataDirectory, { recursive: true, force: true })
+  }
+})
+
 test('the full Vite and auth server serves a Codespaces forwarded host', async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'campus-one-server-'))
   const previousAccessCode = process.env.CAMPUS_ADMIN_ACCESS_CODE
@@ -69,6 +139,7 @@ test('the full Vite and auth server serves a Codespaces forwarded host', async (
     assert.equal(setup.setupRequired, true)
     assert.equal(setup.adminAccessConfigured, true, 'the server reads the private access code from its environment')
     assert.ok(setup.departments.includes('Computer Science'))
+    assert.ok(setup.departments.includes('B.Tech'))
 
     response = await forwardedRequest(`${url}/api/admin/registration-code/verify`, {
       host, method: 'POST', origin: `https://${host}`, secure: true,
