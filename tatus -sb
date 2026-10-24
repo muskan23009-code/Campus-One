@@ -1,0 +1,8 @@
+.gitignore
+README.md
+server/app.js
+server/index.js
+server/store.js
+src/components/CampusManagement.jsx
+src/components/Dashboard.jsx
+test/server-start.test.js

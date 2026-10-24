@@ -33,6 +33,38 @@ test('student routes exclude every management page', () => {
   }
 })
 
+test('Campus Voice is a new module available only to Students and Administration', () => {
+  const items = navigationGroups.flatMap((group) => group.items)
+  assert.ok(items.some((item) => item.id === 'campus-voice' && item.label === 'Campus Voice'))
+  for (const role of Object.values(APP_ROLES)) {
+    const expected = [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(role)
+    assert.equal(canSeePage({ id: 'test-user', name: 'Test User', role, modules: ['campus-voice'] }, 'campus-voice'), expected, `${role} route access`)
+    assert.equal(canAccessCampusModule({ id: 'test-user', role, modules: ['campus-voice'] }, 'campus-voice'), expected, `${role} API access`)
+  }
+})
+
+test('Skill Exchange is available to Students and Administration only', () => {
+  const item = navigationGroups.flatMap((group) => group.items).find((entry) => entry.id === 'skill-exchange')
+  assert.equal(item?.label, 'Skill Exchange')
+  for (const role of Object.values(APP_ROLES)) {
+    const expected = [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(role)
+    const user = { id: 'test-user', name: 'Test User', role, modules: ['skill-exchange'] }
+    assert.equal(canSeePage(user, 'skill-exchange'), expected, `${role} route access`)
+    assert.equal(canAccessCampusModule(user, 'skill-exchange'), expected, `${role} API access`)
+  }
+})
+
+test('Teacher Review uses existing Student, Staff, HOD, and Administration roles only', () => {
+  const item = navigationGroups.flatMap((group) => group.items).find((entry) => entry.id === 'teacher-review')
+  assert.equal(item?.label, 'Teacher Review')
+  for (const role of Object.values(APP_ROLES)) {
+    const expected = [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.ADMIN].includes(role)
+    const user = { id: 'test-user', name: 'Test User', role, modules: ['teacher-review'] }
+    assert.equal(canSeePage(user, 'teacher-review'), expected, `${role} route access`)
+    assert.equal(canAccessCampusModule(user, 'teacher-review'), expected, `${role} API access`)
+  }
+})
+
 test('Hostel is limited to Students and Administration across routes and APIs', () => {
   const eligibleRoles = [APP_ROLES.STUDENT, APP_ROLES.ADMIN]
   for (const role of Object.values(APP_ROLES)) {

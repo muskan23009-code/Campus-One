@@ -13,6 +13,8 @@ export const navigationGroups = [
     label: 'STUDENT LIFE',
     items: [
       { id: 'directory', label: 'Campus database', icon: 'ContactRound' },
+      { id: 'skill-exchange', label: 'Skill Exchange', icon: 'UsersRound' },
+      { id: 'teacher-review', label: 'Teacher Review', icon: 'GraduationCap' },
       { id: 'sports', label: 'Sports & wellness', icon: 'Activity' },
       { id: 'events', label: 'Events & clubs', icon: 'CalendarDays' },
     ],
@@ -20,6 +22,7 @@ export const navigationGroups = [
   {
     label: 'CAMPUS SUPPORT',
     items: [
+      { id: 'campus-voice', label: 'Campus Voice', icon: 'Megaphone' },
       { id: 'complaints', label: 'Complaint & Issue Tracker', icon: 'MessageSquareWarning' },
       { id: 'lost-found', label: 'Lost & Found', icon: 'PackageSearch' },
     ],

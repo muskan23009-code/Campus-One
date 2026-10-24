@@ -30,6 +30,19 @@ const COMPLAINT_CATEGORIES = Object.freeze([
   'Sports', 'Transport', 'Infrastructure', 'Security', 'IT/Technical', 'Other',
 ])
 const COMPLAINT_STATUSES = Object.freeze(['SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'])
+const CAMPUS_VOICE_CATEGORIES = Object.freeze([
+  'Academics', 'Hostel', 'Food & Dining', 'Infrastructure', 'Sports',
+  'Events & Clubs', 'Safety', 'Other',
+])
+const CAMPUS_VOICE_TYPES = Object.freeze(['Concern', 'Suggestion', 'Appreciation', 'Idea'])
+const CAMPUS_VOICE_STATUSES = Object.freeze([
+  'Submitted', 'Under Review', 'Approved', 'In Progress', 'Implemented', 'Declined',
+])
+const SKILL_EXCHANGE_CATEGORIES = Object.freeze([
+  'Technology', 'Design', 'Media', 'Academics', 'Languages', 'Sports', 'Events', 'Other',
+])
+const SKILL_EXCHANGE_LEVELS = Object.freeze(['Beginner', 'Intermediate', 'Advanced'])
+const SKILL_EXCHANGE_KINDS = Object.freeze(['OFFER', 'REQUEST'])
 const MESS_MEALS = Object.freeze(['Breakfast', 'Brunch', 'Lunch', 'Dinner'])
 const LOST_FOUND_CATEGORIES = Object.freeze([
   'ID Card', 'Mobile/Device', 'Books/Notes', 'Wallet/Bag', 'Keys', 'Clothing',
@@ -53,6 +66,7 @@ const CAMPUS_MODULES = {
   directory: 'directory', emergency: 'emergency',
 }
 const DUMMY_CREDENTIALS = await hashPassword(randomUUID())
+const REVIEW_RANKING_MINIMUM = 3
 const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8',
   '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg',
@@ -781,6 +795,122 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       || (pathname === '/api/auth/password' && request.method === 'POST')
       || (pathname === '/api/auth/logout' && request.method === 'POST')
     )) return reject(response, 403, 'Change your temporary password before continuing.')
+
+    if (pathname.startsWith('/api/teacher-reviews')) {
+      if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Your role cannot access Teacher Review.')
+      const month = searchParams.get('month') || currentReviewMonth()
+      if (!validReviewMonth(month)) return reject(response, 400, 'Choose a valid review month.')
+      const data = await store.read()
+      data.teacherReviews ??= []
+      const faculty = data.users.filter((candidate) => [ROLES.STAFF, ROLES.HOD].includes(candidate.role))
+      const activeFaculty = faculty.filter((candidate) => candidate.active)
+      const reviews = data.teacherReviews
+
+      if (pathname === '/api/teacher-reviews/faculty' && request.method === 'GET') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to browse faculty.')
+        const summaries = activeFaculty.map((member) => makeReviewSummary(member, reviews, month))
+        return json(response, 200, {
+          month,
+          faculty: activeFaculty.map(publicReviewFaculty),
+          highlights: rankedReviewSummaries(summaries),
+        })
+      }
+
+      if (pathname === '/api/teacher-reviews/mine' && request.method === 'GET') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to view your reviews.')
+        const ownReviews = reviews
+          .filter((review) => review.reviewerId === user.id)
+          .sort((left, right) => right.month.localeCompare(left.month))
+          .map((review) => publicReviewRecord(review, faculty.find((member) => member.id === review.facultyId)))
+        return json(response, 200, { reviews: ownReviews, currentMonth: currentReviewMonth() })
+      }
+
+      if (pathname === '/api/teacher-reviews' && request.method === 'POST') {
+        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to submit a review.')
+        const input = await body(request)
+        const facultyId = safeText(input.facultyId, 64)
+        const rating = Number(input.rating)
+        const rawFeedback = typeof input.feedback === 'string' ? input.feedback.trim() : ''
+        if (!facultyId || !Number.isInteger(rating) || rating < 1 || rating > 5 || rawFeedback.length > 1000) {
+          return reject(response, 400, 'Choose a faculty member, a rating from 1 to 5, and feedback under 1000 characters.')
+        }
+        const currentMonth = currentReviewMonth()
+        const saved = await store.transact((current) => {
+          current.teacherReviews ??= []
+          const reviewer = current.users.find((candidate) => candidate.id === user.id && candidate.active && candidate.role === ROLES.STUDENT)
+          if (!reviewer) throw Object.assign(new Error('An active Student account is required to submit a review.'), { status: 403 })
+          const member = current.users.find((candidate) => candidate.id === facultyId && candidate.active && [ROLES.STAFF, ROLES.HOD].includes(candidate.role))
+          if (!member) throw Object.assign(new Error('This faculty member is not available for review.'), { status: 404 })
+          const existing = current.teacherReviews.find((review) => review.reviewerId === user.id && review.facultyId === member.id && review.month === currentMonth)
+          const studentAccounts = current.users.filter((candidate) => candidate.role === ROLES.STUDENT)
+          const feedback = anonymizeReviewFeedback(rawFeedback, studentAccounts)
+          const now = new Date().toISOString()
+          if (existing) {
+            existing.rating = rating
+            existing.feedback = feedback
+            existing.status = existing.status || 'PUBLISHED'
+            existing.updatedAt = now
+            return { review: existing, member, updated: true }
+          }
+          const review = {
+            id: randomUUID(), facultyId: member.id, reviewerId: user.id,
+            rating, feedback, month: currentMonth, status: 'PUBLISHED',
+            createdAt: now, updatedAt: now,
+          }
+          current.teacherReviews.unshift(review)
+          return { review, member, updated: false }
+        })
+        return json(response, saved.updated ? 200 : 201, {
+          review: publicReviewRecord(saved.review, saved.member),
+          updated: saved.updated,
+        })
+      }
+
+      if (pathname === '/api/teacher-reviews/staff' && request.method === 'GET') {
+        if (![ROLES.STAFF, ROLES.HOD].includes(user.role)) return reject(response, 403, 'Staff or HOD access is required.')
+        const ownFaculty = faculty.find((member) => member.id === user.id && member.active)
+        if (!ownFaculty) return reject(response, 404, 'Your faculty account is not available.')
+        return json(response, 200, { summary: makeReviewSummary(ownFaculty, reviews, month) })
+      }
+
+      if (pathname === '/api/teacher-reviews/admin' && request.method === 'GET') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
+        const role = searchParams.get('role') || ''
+        if (role && ![ROLES.STAFF, ROLES.HOD].includes(role)) return reject(response, 400, 'Choose Staff or HOD as the faculty role filter.')
+        const selectedFaculty = faculty.filter((member) => !role || member.role === role)
+        const summaries = selectedFaculty.map((member) => makeReviewSummary(member, reviews, month))
+        const facultyById = new Map(faculty.map((member) => [member.id, member]))
+        const monthlyReviews = reviews
+          .filter((review) => review.month === month && selectedFaculty.some((member) => member.id === review.facultyId))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .map((review) => publicReviewRecord(review, facultyById.get(review.facultyId)))
+        return json(response, 200, {
+          month,
+          statistics: makeReviewStatistics(summaries, monthlyReviews),
+          faculty: selectedFaculty.map(publicReviewFaculty),
+          summaries,
+          rankings: rankedReviewSummaries(summaries),
+          reviews: monthlyReviews,
+        })
+      }
+
+      const moderationRoute = pathname.match(/^\/api\/teacher-reviews\/admin\/([^/]+)$/)
+      if (moderationRoute && request.method === 'PATCH') {
+        if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
+        const input = await body(request)
+        if (!['PUBLISHED', 'HIDDEN'].includes(input.status)) return reject(response, 400, 'Choose Published or Hidden moderation status.')
+        const updated = await store.transact((current) => {
+          const review = (current.teacherReviews || []).find((candidate) => candidate.id === safeDecodeURIComponent(moderationRoute[1]))
+          if (!review) throw Object.assign(new Error('Review not found.'), { status: 404 })
+          review.status = input.status
+          review.moderatedAt = new Date().toISOString()
+          return { review, member: current.users.find((candidate) => candidate.id === review.facultyId) }
+        })
+        return json(response, 200, { review: publicReviewRecord(updated.review, updated.member) })
+      }
+
+      return reject(response, 404, 'Teacher Review API route not found.')
+    }
 
     if (pathname === '/api/notifications' && request.method === 'GET') {
       const data = await store.transact((current) => {
@@ -2191,6 +2321,315 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       return json(response, 200, { report: publicLostFoundReport(report, user) })
     }
 
+    if (pathname === '/api/campus-voice/ideas' && request.method === 'GET') {
+      if (!canAccess(user, 'campus-voice')) return reject(response, 403, 'Your role cannot access Campus Voice.')
+      const data = await store.read()
+      const ideas = (data.campusVoiceSubmissions || [])
+        .filter((record) => record.kind === 'IDEA')
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      return json(response, 200, { ideas: ideas.map((record) => publicCampusVoiceSubmission(record, user.id)) })
+    }
+
+    if (pathname === '/api/campus-voice/submissions' && request.method === 'GET') {
+      if (!canAccess(user, 'campus-voice')) return reject(response, 403, 'Your role cannot access Campus Voice.')
+      const data = await store.read()
+      const records = (data.campusVoiceSubmissions || [])
+        .filter((record) => user.role === ROLES.ADMIN || record.submitterId === user.id)
+        .filter((record) => !searchParams.get('status') || record.status === searchParams.get('status'))
+        .filter((record) => !searchParams.get('category') || record.category === searchParams.get('category'))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      return json(response, 200, { submissions: records.map((record) => publicCampusVoiceSubmission(record, user.id)) })
+    }
+
+    if (pathname === '/api/campus-voice/submissions' && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can submit to Campus Voice.')
+      const input = await body(request)
+      const kind = input.kind
+      const type = safeText(input.type, 32)
+      const title = safeText(input.title, 120)
+      const description = safeText(input.description, 5000)
+      const category = safeText(input.category, 60)
+      const location = safeText(input.location, 160)
+      if (!['ANONYMOUS', 'IDEA'].includes(kind)) return reject(response, 400, 'Choose a valid Campus Voice submission type.')
+      if (!CAMPUS_VOICE_CATEGORIES.includes(category)) return reject(response, 400, 'Choose a valid Campus Voice category.')
+      if (title.length < 3) return reject(response, 400, 'Enter a title of at least 3 characters.')
+      if (description.length < 10) return reject(response, 400, 'Enter a description of at least 10 characters.')
+      if (kind === 'ANONYMOUS' && !CAMPUS_VOICE_TYPES.slice(0, 3).includes(type)) return reject(response, 400, 'Choose Concern, Suggestion, or Appreciation.')
+      if (kind === 'IDEA' && type !== 'Idea') return reject(response, 400, 'Choose the Idea submission type.')
+      const timestamp = new Date().toISOString()
+      const submission = {
+        id: randomUUID(),
+        kind,
+        type,
+        category,
+        title,
+        description,
+        location,
+        submitterId: user.id,
+        isAnonymous: kind === 'ANONYMOUS',
+        supporters: [],
+        status: 'Submitted',
+        officialResponse: '',
+        implementationUpdate: '',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      await store.transact((data) => {
+        data.campusVoiceSubmissions ??= []
+        data.campusVoiceSubmissions.unshift(submission)
+      })
+      return json(response, 201, { submission: publicCampusVoiceSubmission(submission, user.id) })
+    }
+
+    const campusVoiceSupportRoute = pathname.match(/^\/api\/campus-voice\/ideas\/([^/]+)\/support$/)
+    if (campusVoiceSupportRoute && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can support Campus Ideas.')
+      const submissionId = safeDecodeURIComponent(campusVoiceSupportRoute[1])
+      const updated = await store.transact((data) => {
+        const record = (data.campusVoiceSubmissions || []).find((item) => item.id === submissionId && item.kind === 'IDEA')
+        if (!record) throw Object.assign(new Error('Campus Idea not found.'), { status: 404 })
+        if (record.status === 'Declined') throw Object.assign(new Error('Declined ideas cannot receive support.'), { status: 409 })
+        record.supporters ??= []
+        const supported = record.supporters.includes(user.id)
+        record.supporters = supported
+          ? record.supporters.filter((id) => id !== user.id)
+          : [...record.supporters, user.id]
+        record.updatedAt = new Date().toISOString()
+        return { record, supported: !supported }
+      })
+      return json(response, 200, {
+        idea: publicCampusVoiceSubmission(updated.record, user.id),
+        supported: updated.supported,
+      })
+    }
+
+    const campusVoiceSubmissionRoute = pathname.match(/^\/api\/campus-voice\/submissions\/([^/]+)$/)
+    if (campusVoiceSubmissionRoute && request.method === 'GET') {
+      if (!canAccess(user, 'campus-voice')) return reject(response, 403, 'Your role cannot access Campus Voice.')
+      const submissionId = safeDecodeURIComponent(campusVoiceSubmissionRoute[1])
+      const record = (await store.read()).campusVoiceSubmissions.find((item) => item.id === submissionId)
+      if (!record || (user.role !== ROLES.ADMIN && record.kind !== 'IDEA' && record.submitterId !== user.id)) {
+        return reject(response, 404, 'Campus Voice submission not found.')
+      }
+      return json(response, 200, { submission: publicCampusVoiceSubmission(record, user.id) })
+    }
+
+    if (campusVoiceSubmissionRoute && request.method === 'PATCH') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Only Administration can manage Campus Voice submissions.')
+      const input = await body(request)
+      const keys = Object.keys(input)
+      if (!keys.length || keys.some((key) => !['status', 'officialResponse', 'implementationUpdate'].includes(key))) {
+        return reject(response, 400, 'Choose a valid status or official update.')
+      }
+      if (input.status !== undefined && !CAMPUS_VOICE_STATUSES.includes(input.status)) return reject(response, 400, 'Choose a valid Campus Voice status.')
+      const officialResponse = input.officialResponse === undefined ? undefined : safeText(input.officialResponse, 3000)
+      const implementationUpdate = input.implementationUpdate === undefined ? undefined : safeText(input.implementationUpdate, 3000)
+      const updated = await store.transact((data) => {
+        const record = (data.campusVoiceSubmissions || []).find((item) => item.id === safeDecodeURIComponent(campusVoiceSubmissionRoute[1]))
+        if (!record) throw Object.assign(new Error('Campus Voice submission not found.'), { status: 404 })
+        const allowedStatuses = {
+          Submitted: ['Under Review', 'Declined'],
+          'Under Review': ['Approved', 'Declined'],
+          Approved: ['In Progress', 'Declined'],
+          'In Progress': ['Implemented', 'Declined'],
+          Implemented: [],
+          Declined: [],
+        }
+        if (input.status !== undefined && input.status !== record.status && !allowedStatuses[record.status]?.includes(input.status)) {
+          throw Object.assign(new Error('That Campus Voice status transition is not allowed.'), { status: 409 })
+        }
+        if (input.status === 'Implemented' && !(implementationUpdate ?? record.implementationUpdate)?.trim()) {
+          throw Object.assign(new Error('Add an implementation update before marking this submission implemented.'), { status: 400 })
+        }
+        if (input.status !== undefined) record.status = input.status
+        if (officialResponse !== undefined) record.officialResponse = officialResponse
+        if (implementationUpdate !== undefined) record.implementationUpdate = implementationUpdate
+        record.updatedAt = new Date().toISOString()
+        return record
+      })
+      return json(response, 200, { submission: publicCampusVoiceSubmission(updated, user.id) })
+    }
+
+    if (pathname === '/api/skill-exchange/listings' && request.method === 'GET') {
+      if (!canAccess(user, 'skill-exchange')) return reject(response, 403, 'Your role cannot access Skill Exchange.')
+      const data = await store.read()
+      const search = safeText(searchParams.get('q'), 120).toLowerCase()
+      const listings = (data.skillExchangeListings || [])
+        .filter((listing) => {
+          const owner = data.users.find((candidate) => candidate.id === listing.ownerId)
+          return owner?.active && owner.role === ROLES.STUDENT
+        })
+        .filter((listing) => searchParams.get('mine') === '1' ? listing.ownerId === user.id : listing.active)
+        .filter((listing) => !searchParams.get('kind') || listing.kind === searchParams.get('kind'))
+        .filter((listing) => !searchParams.get('category') || listing.category === searchParams.get('category'))
+        .filter((listing) => !searchParams.get('level') || listing.level === searchParams.get('level'))
+        .filter((listing) => !search || [listing.skill, listing.description, listing.helpWith, listing.category].join(' ').toLowerCase().includes(search))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      return json(response, 200, { listings: listings.map((listing) => publicSkillExchangeListing(listing, data.users, user.id)) })
+    }
+
+    if (pathname === '/api/skill-exchange/listings' && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can create Skill Exchange listings.')
+      const input = await body(request)
+      const listing = validateSkillExchangeListing(input)
+      const created = await store.transact((data) => {
+        data.skillExchangeListings ??= []
+        const now = new Date().toISOString()
+        const record = {
+          id: randomUUID(), ownerId: user.id, kind: listing.kind,
+          skill: listing.skill, category: listing.category,
+          description: listing.description, level: listing.level,
+          helpWith: listing.helpWith, availability: listing.availability,
+          deadline: listing.deadline, active: true, createdAt: now, updatedAt: now,
+        }
+        data.skillExchangeListings.unshift(record)
+        return record
+      })
+      const data = await store.read()
+      return json(response, 201, { listing: publicSkillExchangeListing(created, data.users, user.id) })
+    }
+
+    const skillListingRoute = pathname.match(/^\/api\/skill-exchange\/listings\/([^/]+)$/)
+    if (skillListingRoute && ['PATCH', 'DELETE'].includes(request.method)) {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can manage their own Skill Exchange listings.')
+      const listingId = safeDecodeURIComponent(skillListingRoute[1])
+      if (request.method === 'DELETE') {
+        const removed = await store.transact((data) => {
+          const index = (data.skillExchangeListings || []).findIndex((listing) => listing.id === listingId && listing.ownerId === user.id)
+          if (index < 0) return false
+          data.skillExchangeListings.splice(index, 1)
+          return true
+        })
+        return removed ? json(response, 200, { deleted: true }) : reject(response, 404, 'Your Skill Exchange listing was not found.')
+      }
+      const input = await body(request)
+      if (Object.keys(input).some((key) => !['active', 'kind', 'skill', 'category', 'description', 'level', 'helpWith', 'availability', 'deadline'].includes(key))) {
+        return reject(response, 400, 'Choose valid Skill Exchange listing fields.')
+      }
+      const updated = await store.transact((data) => {
+        const listing = (data.skillExchangeListings || []).find((item) => item.id === listingId && item.ownerId === user.id)
+        if (!listing) throw Object.assign(new Error('Your Skill Exchange listing was not found.'), { status: 404 })
+        if (Object.hasOwn(input, 'active')) {
+          if (typeof input.active !== 'boolean') throw Object.assign(new Error('Choose whether the listing is active.'), { status: 400 })
+          listing.active = input.active
+        }
+        if (['skill', 'category', 'description', 'level', 'helpWith', 'availability', 'deadline', 'kind'].some((key) => Object.hasOwn(input, key))) {
+          const patch = validateSkillExchangeListing({ ...listing, ...input })
+          Object.assign(listing, patch)
+        }
+        listing.updatedAt = new Date().toISOString()
+        return listing
+      })
+      const data = await store.read()
+      return json(response, 200, { listing: publicSkillExchangeListing(updated, data.users, user.id) })
+    }
+
+    if (pathname === '/api/skill-exchange/connections' && request.method === 'GET') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can access Skill Exchange connections.')
+      const data = await store.read()
+      const connections = (data.skillExchangeConnections || [])
+        .filter((connection) => connection.senderId === user.id || connection.recipientId === user.id)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      return json(response, 200, { connections: connections.map((connection) => publicSkillExchangeConnection(connection, user.id, data)) })
+    }
+
+    if (pathname === '/api/skill-exchange/connections' && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can send Skill Exchange connection requests.')
+      const input = await body(request)
+      const listingId = safeText(input.listingId, 64)
+      const message = safeText(input.message, 500)
+      const result = await store.transact((data) => {
+        const listing = (data.skillExchangeListings || []).find((item) => item.id === listingId && item.active)
+        if (!listing || listing.ownerId === user.id) throw Object.assign(new Error('Choose an active listing belonging to another student.'), { status: 404 })
+        const duplicate = (data.skillExchangeConnections || []).find((item) =>
+          item.listingId === listingId && item.senderId === user.id && item.status === 'PENDING')
+        if (duplicate) throw Object.assign(new Error('You already have a pending request for this listing.'), { status: 409 })
+        data.skillExchangeConnections ??= []
+        const connection = {
+          id: randomUUID(), listingId, kind: listing.kind === 'REQUEST' ? 'OFFER_HELP' : 'CONNECT',
+          senderId: user.id, recipientId: listing.ownerId, message, status: 'PENDING',
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        }
+        data.skillExchangeConnections.unshift(connection)
+        return connection
+      })
+      const data = await store.read()
+      return json(response, 201, { connection: publicSkillExchangeConnection(result, user.id, data) })
+    }
+
+    const skillConnectionRoute = pathname.match(/^\/api\/skill-exchange\/connections\/([^/]+)$/)
+    if (skillConnectionRoute && request.method === 'PATCH') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can manage Skill Exchange connection requests.')
+      const input = await body(request)
+      if (!['ACCEPTED', 'DECLINED', 'CANCELLED'].includes(input.status)) return reject(response, 400, 'Choose Accept, Decline, or Cancel.')
+      const updated = await store.transact((data) => {
+        const connection = (data.skillExchangeConnections || []).find((item) => item.id === safeDecodeURIComponent(skillConnectionRoute[1]))
+        if (!connection) throw Object.assign(new Error('Connection request not found.'), { status: 404 })
+        const incomingDecision = connection.recipientId === user.id && ['ACCEPTED', 'DECLINED'].includes(input.status)
+        const senderCancellation = connection.senderId === user.id && input.status === 'CANCELLED'
+        if (connection.status !== 'PENDING' || (!incomingDecision && !senderCancellation)) {
+          throw Object.assign(new Error('You cannot make that change to this connection request.'), { status: 403 })
+        }
+        connection.status = input.status
+        connection.updatedAt = new Date().toISOString()
+        return connection
+      })
+      const data = await store.read()
+      return json(response, 200, { connection: publicSkillExchangeConnection(updated, user.id, data) })
+    }
+
+    if (pathname === '/api/skill-exchange/reports' && request.method === 'GET') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to review reports.')
+      const data = await store.read()
+      const reports = (data.skillExchangeReports || [])
+        .map((report) => publicSkillExchangeReport(report, data))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      return json(response, 200, { reports })
+    }
+
+    if (pathname === '/api/skill-exchange/reports' && request.method === 'POST') {
+      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can report Skill Exchange listings.')
+      const input = await body(request)
+      const listingId = safeText(input.listingId, 64)
+      const reason = safeText(input.reason, 80)
+      const details = safeText(input.details, 1000)
+      if (!['Inappropriate content', 'Spam', 'Misleading', 'Safety concern', 'Other'].includes(reason)) return reject(response, 400, 'Choose a valid report reason.')
+      const created = await store.transact((data) => {
+        const listing = (data.skillExchangeListings || []).find((item) => item.id === listingId && item.active)
+        if (!listing || listing.ownerId === user.id) throw Object.assign(new Error('Choose an active listing belonging to another student.'), { status: 404 })
+        const existing = (data.skillExchangeReports || []).find((report) => report.listingId === listingId && report.reporterId === user.id && report.status === 'PENDING')
+        if (existing) throw Object.assign(new Error('You already reported this listing.'), { status: 409 })
+        data.skillExchangeReports ??= []
+        const report = {
+          id: randomUUID(), listingId, reporterId: user.id, reason, details,
+          status: 'PENDING', createdAt: new Date().toISOString(), reviewedAt: null,
+        }
+        data.skillExchangeReports.unshift(report)
+        return report
+      })
+      return json(response, 201, { report: { id: created.id, listingId: created.listingId, reason: created.reason, details: created.details, status: created.status, createdAt: created.createdAt } })
+    }
+
+    const skillReportRoute = pathname.match(/^\/api\/skill-exchange\/reports\/([^/]+)$/)
+    if (skillReportRoute && request.method === 'PATCH') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required to review reports.')
+      const input = await body(request)
+      if (!['REVIEWED', 'DISMISSED', 'REMOVE_LISTING'].includes(input.status)) return reject(response, 400, 'Choose Review, Dismiss, or Remove Listing.')
+      const report = await store.transact((data) => {
+        const entry = (data.skillExchangeReports || []).find((item) => item.id === safeDecodeURIComponent(skillReportRoute[1]))
+        if (!entry) throw Object.assign(new Error('Skill Exchange report not found.'), { status: 404 })
+        if (entry.status !== 'PENDING') throw Object.assign(new Error('This report has already been reviewed.'), { status: 409 })
+        entry.status = input.status
+        entry.reviewedAt = new Date().toISOString()
+        if (input.status === 'REMOVE_LISTING') {
+          const listing = (data.skillExchangeListings || []).find((item) => item.id === entry.listingId)
+          if (listing) listing.active = false
+        }
+        return entry
+      })
+      return json(response, 200, { report: { id: report.id, listingId: report.listingId, reason: report.reason, details: report.details, status: report.status, createdAt: report.createdAt, reviewedAt: report.reviewedAt } })
+    }
+
     if (pathname === '/api/complaints' && request.method === 'GET') {
       if (!canAccess(user, 'complaints')) return reject(response, 403, 'Your role cannot access complaint records.')
       const data = await store.read()
@@ -3069,8 +3508,216 @@ function normalizeStaffModules(value) {
   return [...new Set(value.filter((moduleId) => allowed.has(moduleId)))].slice(0, 30)
 }
 
+function currentReviewMonth() {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(new Date())
+  return `${parts.find((part) => part.type === 'year').value}-${parts.find((part) => part.type === 'month').value}`
+}
+
+function validReviewMonth(value) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return false
+  return value <= currentReviewMonth()
+}
+
+function publicReviewFaculty(member) {
+  return { id: member.id, name: member.name, role: member.role }
+}
+
+function anonymizeReviewFeedback(value, studentAccounts) {
+  const identifiers = studentAccounts.flatMap((student) => [student.id, student.name, student.rollNumber, student.email, student.username, student.userName, student.mobile])
+    .filter((identifier) => typeof identifier === 'string' && identifier.trim().length >= 3)
+  return identifiers.reduce((feedback, identifier) => {
+    const escaped = identifier.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return feedback.replace(new RegExp(escaped, 'gi'), '[redacted]')
+  }, value)
+}
+
+function publicReviewRecord(review, member) {
+  return {
+    id: review.id,
+    facultyId: review.facultyId,
+    facultyName: member?.name || 'Unavailable faculty member',
+    facultyRole: member?.role || '',
+    rating: review.rating,
+    feedback: review.feedback,
+    month: review.month,
+    status: review.status === 'HIDDEN' ? 'Hidden' : 'Published',
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+  }
+}
+
+function makeReviewSummary(member, allReviews, month) {
+  const facultyReviews = allReviews.filter((review) => review.facultyId === member.id && review.status !== 'HIDDEN')
+  const selectedReviews = facultyReviews.filter((review) => review.month === month)
+  const ratings = Object.fromEntries([1, 2, 3, 4, 5].map((rating) => [rating, selectedReviews.filter((review) => review.rating === rating).length]))
+  const monthlyMap = new Map()
+  for (const review of facultyReviews) {
+    const entry = monthlyMap.get(review.month) || { month: review.month, totalReviews: 0, ratingTotal: 0 }
+    entry.totalReviews += 1
+    entry.ratingTotal += review.rating
+    monthlyMap.set(review.month, entry)
+  }
+  const monthlyRatings = [...monthlyMap.values()]
+    .map((entry) => ({ month: entry.month, totalReviews: entry.totalReviews, averageRating: roundRating(entry.ratingTotal / entry.totalReviews) }))
+    .sort((left, right) => right.month.localeCompare(left.month))
+  const overallRatingTotal = facultyReviews.reduce((total, review) => total + review.rating, 0)
+  return {
+    faculty: publicReviewFaculty(member),
+    averageRating: facultyReviews.length ? roundRating(overallRatingTotal / facultyReviews.length) : 0,
+    totalReviews: facultyReviews.length,
+    month,
+    monthlyRating: selectedReviews.length ? roundRating(selectedReviews.reduce((total, review) => total + review.rating, 0) / selectedReviews.length) : 0,
+    monthlyReviewCount: selectedReviews.length,
+    ratingDistribution: ratings,
+    monthlyRatings,
+    feedback: selectedReviews
+      .filter((review) => review.feedback)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map((review) => ({ id: review.id, rating: review.rating, feedback: review.feedback, createdAt: review.createdAt })),
+  }
+}
+
+function rankedReviewSummaries(summaries) {
+  return summaries
+    .filter((summary) => summary.monthlyReviewCount >= REVIEW_RANKING_MINIMUM)
+    .sort((left, right) => right.monthlyRating - left.monthlyRating || right.monthlyReviewCount - left.monthlyReviewCount)
+    .map((summary, index) => ({
+      rank: index + 1,
+      faculty: summary.faculty,
+      averageRating: summary.monthlyRating,
+      totalReviews: summary.monthlyReviewCount,
+      monthlyTrend: monthlyTrend(summary.monthlyRatings, summary.month),
+    }))
+}
+
+function monthlyTrend(monthlyRatings, month) {
+  const currentEntry = monthlyRatings.find((entry) => entry.month === month)
+  const previousMonthDate = new Date(`${month}-01T00:00:00.000Z`)
+  previousMonthDate.setUTCMonth(previousMonthDate.getUTCMonth() - 1)
+  const previousMonth = previousMonthDate.toISOString().slice(0, 7)
+  const previousEntry = monthlyRatings.find((entry) => entry.month === previousMonth)
+  if (!currentEntry || !previousEntry) return 'no-history'
+  const current = currentEntry.averageRating
+  const previous = previousEntry.averageRating
+  return current > previous ? 'up' : current < previous ? 'down' : 'steady'
+}
+
+function makeReviewStatistics(summaries, reviews) {
+  const published = reviews.filter((review) => review.status === 'Published')
+  const totalRating = published.reduce((total, review) => total + review.rating, 0)
+  return {
+    facultyCount: summaries.length,
+    totalReviews: reviews.length,
+    publishedReviews: published.length,
+    averageRating: published.length ? roundRating(totalRating / published.length) : 0,
+    ratingDistribution: Object.fromEntries([1, 2, 3, 4, 5].map((rating) => [rating, published.filter((review) => review.rating === rating).length])),
+  }
+}
+
+function roundRating(value) {
+  return Math.round(value * 10) / 10
+}
+
 function safeText(value, maximum) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : ''
+}
+
+function publicCampusVoiceSubmission(record, userId) {
+  return {
+    id: record.id,
+    kind: record.kind,
+    type: record.type,
+    category: record.category,
+    title: record.title,
+    description: record.description,
+    location: record.location,
+    isAnonymous: record.isAnonymous === true,
+    status: record.status,
+    supportCount: (record.supporters || []).length,
+    supportedByMe: (record.supporters || []).includes(userId),
+    officialResponse: record.officialResponse || '',
+    implementationUpdate: record.implementationUpdate || '',
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }
+}
+
+function validateSkillExchangeListing(input) {
+  const kind = safeText(input.kind, 16)
+  const skill = safeText(input.skill, 100)
+  const category = safeText(input.category, 40)
+  const description = safeText(input.description, 1000)
+  const level = safeText(input.level, 20)
+  const helpWith = safeText(input.helpWith, 500)
+  const availability = safeText(input.availability, 120)
+  const deadline = safeText(input.deadline, 10)
+  if (!SKILL_EXCHANGE_KINDS.includes(kind)) throw Object.assign(new Error('Choose whether you can help or need help.'), { status: 400 })
+  if (skill.length < 2) throw Object.assign(new Error('Enter a skill name of at least 2 characters.'), { status: 400 })
+  if (!SKILL_EXCHANGE_CATEGORIES.includes(category)) throw Object.assign(new Error('Choose a valid Skill Exchange category.'), { status: 400 })
+  if (description.length < 10) throw Object.assign(new Error('Add a description of at least 10 characters.'), { status: 400 })
+  if (!SKILL_EXCHANGE_LEVELS.includes(level)) throw Object.assign(new Error('Choose a valid experience level.'), { status: 400 })
+  if (kind === 'OFFER' && !helpWith) throw Object.assign(new Error('Describe what you can help with.'), { status: 400 })
+  if (deadline && (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || Number.isNaN(Date.parse(`${deadline}T00:00:00Z`)))) {
+    throw Object.assign(new Error('Choose a valid deadline.'), { status: 400 })
+  }
+  return { kind, skill, category, description, level, helpWith: kind === 'OFFER' ? helpWith : '', availability: kind === 'OFFER' ? availability : '', deadline: kind === 'REQUEST' ? deadline : '' }
+}
+
+function publicSkillExchangeListing(listing, users, viewerId) {
+  const owner = users.find((candidate) => candidate.id === listing.ownerId)
+  return {
+    id: listing.id,
+    kind: listing.kind,
+    skill: listing.skill,
+    category: listing.category,
+    description: listing.description,
+    level: listing.level,
+    helpWith: listing.helpWith,
+    availability: listing.availability,
+    deadline: listing.deadline,
+    active: listing.active,
+    isMine: listing.ownerId === viewerId,
+    createdAt: listing.createdAt,
+    updatedAt: listing.updatedAt,
+    student: {
+      name: owner?.name || 'Campus student',
+      department: owner?.department || '',
+      semester: owner?.semester || '',
+      admissionYear: owner?.admissionYear || '',
+    },
+  }
+}
+
+function publicSkillExchangeConnection(connection, userId, data) {
+  const otherId = connection.senderId === userId ? connection.recipientId : connection.senderId
+  const peer = data.users.find((candidate) => candidate.id === otherId)
+  const listing = data.skillExchangeListings.find((candidate) => candidate.id === connection.listingId)
+  return {
+    id: connection.id,
+    listingId: connection.listingId,
+    kind: connection.kind,
+    message: connection.message,
+    status: connection.status,
+    incoming: connection.recipientId === userId,
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
+    student: { name: peer?.name || 'Campus student', department: peer?.department || '', semester: peer?.semester || '' },
+    listing: listing ? { skill: listing.skill, category: listing.category, kind: listing.kind } : null,
+  }
+}
+
+function publicSkillExchangeReport(report, data) {
+  const listing = data.skillExchangeListings.find((candidate) => candidate.id === report.listingId)
+  return {
+    id: report.id,
+    listingId: report.listingId,
+    reason: report.reason,
+    details: report.details,
+    status: report.status,
+    createdAt: report.createdAt,
+    reviewedAt: report.reviewedAt,
+    listing: listing ? { skill: listing.skill, category: listing.category, kind: listing.kind, active: listing.active } : null,
+  }
 }
 
 function validateRecord(input, existing = {}) {

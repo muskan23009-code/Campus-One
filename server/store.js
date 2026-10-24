@@ -20,6 +20,11 @@ export function createStore(dataDirectory) {
       const data = JSON.parse(await readFile(databasePath, 'utf8'))
       data.users ??= []
       data.complaints ??= []
+      data.teacherReviews ??= []
+      data.campusVoiceSubmissions ??= []
+      data.skillExchangeListings ??= []
+      data.skillExchangeConnections ??= []
+      data.skillExchangeReports ??= []
       data.lostFoundReports ??= []
       data.campusEvents ??= []
       data.eventRegistrations ??= []
@@ -59,6 +64,11 @@ export function createStore(dataDirectory) {
       return {
         users: [],
         complaints: [],
+        teacherReviews: [],
+        campusVoiceSubmissions: [],
+        skillExchangeListings: [],
+        skillExchangeConnections: [],
+        skillExchangeReports: [],
         lostFoundReports: [],
         campusEvents: [],
         eventRegistrations: [],

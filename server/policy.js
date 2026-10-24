@@ -28,24 +28,24 @@ export const STUDENT_MODULES = Object.freeze([
 
 export const STAFF_MODULES = Object.freeze([
   'overview', 'notices', 'complaints', 'events', 'hostel', 'canteen',
-  'directory', 'food', 'lost-found', 'emergency', 'sports',
+  'directory', 'food', 'lost-found', 'emergency', 'sports', 'teacher-review',
 ])
 
 export const CANTEEN_STAFF_MODULES = Object.freeze(['canteen'])
 
 export const HOD_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports', 'events',
+  'overview', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review',
 ])
 
 export const ALL_MODULES = Object.freeze([
-  ...STUDENT_MODULES, 'analytics', 'users', 'campus-management',
-  'sports-management',
+  ...STUDENT_MODULES, 'campus-voice', 'skill-exchange', 'analytics', 'users', 'campus-management',
+  'sports-management', 'teacher-review',
 ])
 
 export function modulesForUser(user) {
   if (user.role === ROLES.ADMIN) return ALL_MODULES
   if (user.role === ROLES.CANTEEN) return CANTEEN_STAFF_MODULES
-  if (user.role === ROLES.STUDENT) return STUDENT_MODULES
+  if (user.role === ROLES.STUDENT) return [...STUDENT_MODULES, 'teacher-review', 'campus-voice', 'skill-exchange']
   if (user.role === ROLES.HOD) return HOD_MODULES
   if (user.role === ROLES.STAFF) {
     return [...new Set([...STAFF_MODULES, ...(user.modules || [])])]
@@ -154,6 +154,9 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
     diet, category, name, price, size: size || '', available: true, description: '',
   })))
 export function canAccess(user, moduleId) {
+  if (moduleId === 'teacher-review') return [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)
+  if (moduleId === 'campus-voice') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
+  if (moduleId === 'skill-exchange') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
   if (moduleId === 'library' || moduleId === 'transport') return false
   if (moduleId === 'hostel') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
   return modulesForUser(user).includes(moduleId)

@@ -21,6 +21,9 @@ import FoodAndDineIn from './components/FoodAndDineIn.jsx'
 import Hostel from './components/Hostel.jsx'
 import NoticeBoard from './components/NoticeBoard.jsx'
 import EventsClubs from './components/EventsClubs.jsx'
+import CampusVoice from './components/CampusVoice.jsx'
+import SkillExchange from './components/SkillExchange.jsx'
+import TeacherReview from './components/TeacherReview.jsx'
 import { navigationGroups } from './data/campusData'
 
 const titles = Object.fromEntries(navigationGroups.flatMap((group) => group.items.map((item) => [item.id, item.label])))
@@ -254,10 +257,13 @@ export default function SecureApp() {
         {activePage === 'canteen' && <Canteen user={user} onNotify={showToast}/>}
         {activePage === 'food' && <FoodAndDineIn user={user} initialSection="home" onNavigate={(page) => applyRoute(page)} onNotify={showToast}/>}
         {activePage === 'events' && <EventsClubs user={user} departments={departments} onNotify={showToast}/>}
+        {activePage === 'campus-voice' && <CampusVoice user={user} onNotify={showToast}/>}
+        {activePage === 'skill-exchange' && <SkillExchange user={user} onNotify={showToast}/>}
+        {activePage === 'teacher-review' && <TeacherReview user={user} onNotify={showToast}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+        {titles[activePage] && !['overview', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}
