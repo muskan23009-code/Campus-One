@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarDays, Check, Search, Users, X } from 'lucide-react'
+import { CalendarDays, Check, Music2, Search, Sparkles, Trophy, Users, X } from 'lucide-react'
 import { api } from '../api/client'
 
 const tabs = ['Overview', 'Events', 'My Registrations', 'Clubs', 'My Clubs']
@@ -124,7 +124,7 @@ export default function EventsClubs({ user, departments, onNotify }) {
 
   return <div className="module-page page-enter events-clubs-page">
     <div className="module-breadcrumb">CAMPUS LIFE <span>›</span> EVENTS & CLUBS</div>
-    <section className="module-hero"><div className="module-title-area"><span className="module-icon"><CalendarDays size={20}/></span><span className="module-eyebrow">CAMPUS LIFE, TOGETHER</span><h1>Events & Clubs<span className="module-title-period">.</span></h1><p>Discover what's happening, register for events, and find your community.</p></div></section>
+    <section className="module-hero"><div className="module-title-area"><span className="module-icon"><CalendarDays size={20}/></span><span className="module-eyebrow">CAMPUS LIFE, TOGETHER</span><h1>Events & Clubs<span className="module-title-period">.</span></h1><p>Discover what's happening, register for events, and find your community.</p></div><div className="events-hero-art" aria-hidden="true"><div className="events-hero-calendar"><span>YOUR CAMPUS, IN SESSION</span><strong>Make your<br/>next moment.</strong><div className="events-hero-calendar-days"><i/><i/><i/><i/><i/><i/><i/><i/><i/></div></div><span className="events-hero-sticker events-hero-sticker-music"><Music2 size={20}/></span><span className="events-hero-sticker events-hero-sticker-sport"><Trophy size={19}/></span><span className="events-hero-sticker events-hero-sticker-community"><Users size={18}/></span><Sparkles className="events-hero-sparkle" size={19}/></div></section>
     {error && <div className="management-alert" role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
     {notice && <div className="food-order-confirmation" role="status"><Check size={16}/><span>{notice}</span></div>}
     <nav className="events-tabs" aria-label="Events and Clubs sections">{tabs.map((item) => <button key={item} className={tab === item ? 'events-tab-active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>
@@ -176,7 +176,7 @@ function EventCard({ event, registration, busy, onRegister, onCancel, onOpen, is
     || event.registrationDeadline && event.registrationDeadline < new Date().toISOString().slice(0, 10)
     || event.maxParticipants && event.registrationCount >= event.maxParticipants
   const isFull = event.maxParticipants && event.registrationCount >= event.maxParticipants
-  return <article className="events-card">
+  return <article className="events-card events-event-card">
     {event.poster && <img className="events-poster" src={event.poster} alt={`${event.name} poster`}/>}
     <div className="events-card-top"><span className="events-category">{event.category}</span><span className={`events-status events-status-${event.status.toLowerCase()}`}>{event.status.replaceAll('_', ' ')}</span></div>
     <h3>{event.name}</h3><p>{event.description}</p>
@@ -218,7 +218,7 @@ function ClubGrid({ clubs, memberships, busy, onJoin, onManage, onEdit }) {
   if (!clubs.length) return <Empty>No clubs match your search.</Empty>
   return <div className="events-card-grid">{clubs.map((club) => {
     const membership = memberships.find((entry) => entry.clubId === club.id)
-    return <article className="events-card" key={club.id}>
+    return <article className="events-card events-club-card" key={club.id}>
       {club.logo && <img className="events-poster" src={club.logo} alt={`${club.name} logo`}/>}
       <div className="events-card-top"><span className="events-category">{club.category}</span><span className="events-status">{membership?.status || (club.active ? 'ACTIVE' : 'INACTIVE')}</span></div>
       <h3>{club.name}</h3><p>{club.description}</p>
