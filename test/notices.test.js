@@ -17,9 +17,15 @@ const users = [
   { id: 'PM-S1003', name: 'ECE Semester Three', role: 'Student', course: 'B.Tech', department: 'Electrical Engineering', semester: 'Semester 3' },
   { id: 'PM-ST001', name: 'Department Staff', role: 'Staff', department: 'Computer Science' },
   { id: 'PM-HOD001', name: 'CSE HOD', role: 'HOD', department: 'Computer Science' },
-  { id: 'PM-SC001', name: 'Sports Captain', role: 'Sports Captain' },
+  { id: 'PM-SC001', name: 'Sports Captain', role: 'Sports Captain', department: 'Computer Science', year: '2nd Year' },
   { id: 'PM-AD001', name: 'Administrator', role: 'Administration' },
   { id: 'PM-CS001', name: 'Canteen Staff', role: 'Canteen Staff' },
+  ...['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map((year, index) => ({
+    id: `PM-S10${String(index + 4).padStart(2, '0')}`, name: `CSE ${year}`, role: 'Student',
+    department: 'Computer Science', course: 'B.Tech', year,
+  })),
+  { id: 'PM-ST002', name: 'Another CSE Staff', role: 'Staff', department: 'Computer Science' },
+  { id: 'PM-ST003', name: 'Civil Staff', role: 'Staff', department: 'Civil Engineering' },
 ].map((user) => ({ ...user, active: true, sessionVersion: 1, mustChangePassword: false }))
 
 let server
@@ -92,10 +98,10 @@ test('Administration publishes to everyone except Canteen Staff and notification
     publishAt: new Date(Date.now() - 60_000).toISOString(),
   } })
   assert.equal(created.response.status, 201)
-  assert.equal(created.result.recipientCount, 7, 'everyone excludes only Canteen Staff')
+  assert.equal(created.result.recipientCount, users.length - 1, 'everyone excludes only Canteen Staff')
   const noticeId = created.result.notice.id
 
-  for (const recipient of users.slice(0, 7)) {
+  for (const recipient of users.filter((user) => user.role !== 'Canteen Staff')) {
     const list = await request('/api/notices', { user: recipient })
     const notice = list.result.notices.find((entry) => entry.id === noticeId)
     assert.ok(notice, `${recipient.role} receives the notice`)
@@ -117,7 +123,7 @@ test('Administration publishes to everyone except Canteen Staff and notification
   assert.equal(refreshed.result.notices.find((entry) => entry.id === noticeId).isRead, true)
   assert.equal((await request('/api/notifications', { user: users[0] })).result.unreadCount, unreadBefore - 1)
   const saved = await store.read()
-  assert.equal(saved.notifications.filter((entry) => entry.referenceId === noticeId && entry.type === 'CAMPUS_NOTICE').length, 7, 'notifications are not duplicated on subsequent refreshes')
+  assert.equal(saved.notifications.filter((entry) => entry.referenceId === noticeId && entry.type === 'CAMPUS_NOTICE').length, users.length - 1, 'notifications are not duplicated on subsequent refreshes')
 })
 
 test('HOD and Staff issuance is confined to their own department and profile targeting', async () => {
@@ -151,6 +157,141 @@ test('HOD and Staff issuance is confined to their own department and profile tar
     target: { type: 'EVERYONE' },
   } })
   assert.equal(broadStaff.response.status, 403)
+})
+
+test('Staff can target all students or students in a selected year of their own department', async () => {
+  const staff = users[3]
+  const allStudents = await request('/api/notices', { user: staff, method: 'POST', body: {
+    title: 'All student update', description: 'For all active students.', category: 'Academic',
+    target: { type: 'ALL_STUDENTS' },
+  } })
+  assert.equal(allStudents.response.status, 201)
+  assert.equal(allStudents.result.recipientCount, 9)
+  for (const student of users.filter((user) => user.role === 'Student')) {
+    assert.ok((await request('/api/notices', { user: student })).result.notices.some((entry) => entry.id === allStudents.result.notice.id))
+  }
+  assert.ok((await request('/api/notices', { user: users[5] })).result.notices.some((entry) => entry.id === allStudents.result.notice.id), 'Sports Captain inherits student-facing notices')
+
+  const allYears = await request('/api/notices', { user: staff, method: 'POST', body: {
+    title: 'CSE all-years update', description: 'For Computer Science students.', category: 'Department',
+    target: { type: 'DEPT_STUDENTS' },
+  } })
+  assert.equal(allYears.response.status, 201)
+  assert.equal(allYears.result.notice.target.department, staff.department)
+  assert.ok((await request('/api/notices', { user: users[5] })).result.notices.some((entry) => entry.id === allYears.result.notice.id), 'Sports Captain in the department receives department student notices')
+  assert.equal(allYears.result.recipientCount, 8)
+
+  for (const [index, year] of ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].entries()) {
+    const created = await request('/api/notices', { user: staff, method: 'POST', body: {
+      title: `CSE ${year} update`, description: `For ${year} students only.`, category: 'Academic',
+      target: { type: 'DEPT_YEAR', year },
+    } })
+    assert.equal(created.response.status, 201, `${year} accepted`)
+    assert.equal(created.result.notice.target.department, staff.department)
+    assert.equal(created.result.notice.target.year, year)
+    assert.equal(created.result.recipientCount, [2, 3, 1, 1, 1][index])
+    const matchingStudent = users.find((user) => user.year === year)
+    assert.ok((await request('/api/notices', { user: matchingStudent })).result.notices.some((entry) => entry.id === created.result.notice.id))
+    const captainNotices = (await request('/api/notices', { user: users[5] })).result.notices
+    assert.equal(captainNotices.some((entry) => entry.id === created.result.notice.id), year === '2nd Year', 'Sports Captain only receives a department-year notice when its account year matches')
+    const otherYear = users.find((user) => user.year && user.year !== year)
+    assert.ok(!(await request('/api/notices', { user: otherYear })).result.notices.some((entry) => entry.id === created.result.notice.id))
+    assert.ok(!(await request('/api/notices', { user: users[2] })).result.notices.some((entry) => entry.id === created.result.notice.id), 'other departments do not receive it')
+  }
+
+  const forgedDepartment = await request('/api/notices', { user: staff, method: 'POST', body: {
+    title: 'Cross department year notice', description: 'Client department must not override account department.', category: 'Academic',
+    target: { type: 'DEPT_YEAR', department: 'Civil Engineering', year: '2nd Year' },
+  } })
+  assert.equal(forgedDepartment.response.status, 403)
+  const invalidYear = await request('/api/notices', { user: staff, method: 'POST', body: {
+    title: 'Unsupported year', description: 'Only supported years are accepted.', category: 'Academic',
+    target: { type: 'DEPT_YEAR', year: '6th Year' },
+  } })
+  assert.equal(invalidYear.response.status, 400)
+  const staffCannotTargetFaculty = await request('/api/notices', { user: staff, method: 'POST', body: {
+    title: 'Staff audience attempt', description: 'Only HOD may target staff.', category: 'Department',
+    target: { type: 'DEPT_FACULTY' },
+  } })
+  assert.equal(staffCannotTargetFaculty.response.status, 403)
+})
+
+test('HOD can target all students, department student years, and only own-department Staff', async () => {
+  const hod = users[4]
+  const allStudents = await request('/api/notices', { user: hod, method: 'POST', body: {
+    title: 'HOD all-students notice', description: 'For all active students.', category: 'Academic',
+    target: { type: 'ALL_STUDENTS' },
+  } })
+  assert.equal(allStudents.response.status, 201)
+  assert.equal(allStudents.result.recipientCount, 9)
+
+  const departmentStudents = await request('/api/notices', { user: hod, method: 'POST', body: {
+    title: 'HOD all-years notice', description: 'For students in the HOD department.', category: 'Department',
+    target: { type: 'DEPT_STUDENTS' },
+  } })
+  assert.equal(departmentStudents.response.status, 201)
+  assert.equal(departmentStudents.result.notice.target.department, hod.department)
+  assert.equal(departmentStudents.result.recipientCount, 8)
+  assert.ok(!(await request('/api/notices', { user: users[2] })).result.notices.some((entry) => entry.id === departmentStudents.result.notice.id))
+
+  const departmentStaff = await request('/api/notices', { user: hod, method: 'POST', body: {
+    title: 'Department staff meeting', description: 'For staff in the HOD department only.', category: 'Department',
+    target: { type: 'DEPT_FACULTY' },
+  } })
+  assert.equal(departmentStaff.response.status, 201)
+  assert.equal(departmentStaff.result.notice.target.department, hod.department)
+  assert.equal(departmentStaff.result.recipientCount, 2)
+  for (const staff of [users[3], users[13]]) {
+    assert.ok((await request('/api/notices', { user: staff })).result.notices.some((entry) => entry.id === departmentStaff.result.notice.id))
+  }
+  assert.ok(!(await request('/api/notices', { user: users[14] })).result.notices.some((entry) => entry.id === departmentStaff.result.notice.id))
+
+  const departmentYear = await request('/api/notices', { user: hod, method: 'POST', body: {
+    title: 'HOD fourth-year update', description: 'For CSE fourth-year students.', category: 'Academic',
+    target: { type: 'DEPT_YEAR', year: '4th Year' },
+  } })
+  assert.equal(departmentYear.response.status, 201)
+  assert.equal(departmentYear.result.recipientCount, 1)
+  assert.ok((await request('/api/notices', { user: users.find((user) => user.year === '4th Year') })).result.notices.some((entry) => entry.id === departmentYear.result.notice.id))
+  assert.ok(!(await request('/api/notices', { user: users.find((user) => user.year === '5th Year') })).result.notices.some((entry) => entry.id === departmentYear.result.notice.id))
+
+  const forgedStaffDepartment = await request('/api/notices', { user: hod, method: 'POST', body: {
+    title: 'Forged staff audience', description: 'A caller cannot select a different department.', category: 'Department',
+    target: { type: 'DEPT_FACULTY', department: 'Civil Engineering' },
+  } })
+  assert.equal(forgedStaffDepartment.response.status, 403)
+})
+
+test('Staff and HOD can issue department-scoped notices to authorized audiences only', async () => {
+  const staffStudents = await request('/api/notices', { user: users[3], method: 'POST', body: {
+    title: 'CSE student schedule', description: 'Department students should check the schedule.', category: 'Academic',
+    target: { type: 'DEPT_STUDENTS' },
+  } })
+  assert.equal(staffStudents.response.status, 201)
+  assert.equal(staffStudents.result.recipientCount, 8)
+  assert.ok((await request('/api/notices', { user: users[0] })).result.notices.some((entry) => entry.id === staffStudents.result.notice.id))
+  assert.ok(!(await request('/api/notices', { user: users[2] })).result.notices.some((entry) => entry.id === staffStudents.result.notice.id))
+
+  const staffFaculty = await request('/api/notices', { user: users[3], method: 'POST', body: {
+    title: 'CSE faculty briefing', description: 'Not authorized for Staff issuers.', category: 'Department',
+    target: { type: 'DEPT_FACULTY' },
+  } })
+  assert.equal(staffFaculty.response.status, 403)
+
+  const hodFaculty = await request('/api/notices', { user: users[4], method: 'POST', body: {
+    title: 'CSE faculty briefing', description: 'Department faculty meeting.', category: 'Department',
+    target: { type: 'DEPT_FACULTY' },
+  } })
+  assert.equal(hodFaculty.response.status, 201)
+  assert.equal(hodFaculty.result.recipientCount, 2)
+  assert.ok((await request('/api/notices', { user: users[3] })).result.notices.some((entry) => entry.id === hodFaculty.result.notice.id))
+  assert.ok(!(await request('/api/notices', { user: users[2] })).result.notices.some((entry) => entry.id === hodFaculty.result.notice.id))
+
+  const otherDepartment = await request('/api/notices', { user: users[4], method: 'POST', body: {
+    title: 'Cross department notice', description: 'The server must reject a modified department.', category: 'Department',
+    target: { type: 'DEPT_STUDENTS', department: 'Electrical Engineering' },
+  } })
+  assert.equal(otherDepartment.response.status, 403)
 })
 
 test('Sports Captain can issue sports notices only to appropriate sports audiences', async () => {

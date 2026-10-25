@@ -21,7 +21,7 @@ export default function TeacherReview({ user, onNotify }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
-  const isStudent = user.role === APP_ROLES.STUDENT
+  const isStudent = [APP_ROLES.STUDENT, APP_ROLES.SPORTS].includes(user.role)
   const isAdmin = user.role === APP_ROLES.ADMIN
 
   useEffect(() => {

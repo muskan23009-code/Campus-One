@@ -3,6 +3,7 @@ import { Bell, CalendarDays, ExternalLink, FileText, Megaphone, Pin, Search, Shi
 import { api } from '../api/client'
 
 const priorityOptions = ['Normal', 'Important', 'Urgent']
+const studentYears = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
 const audienceOptions = {
   Administration: [
     ['EVERYONE', 'Everyone'], ['STUDENTS', 'Students'], ['STAFF', 'Staff'], ['HODS', 'HODs'],
@@ -11,8 +12,17 @@ const audienceOptions = {
     ['SPORTS', 'Sports students'], ['SPORT', 'Specific sport'], ['TEAM', 'Specific team'],
     ['EVENT', 'Specific event / trial'], ['HOSTEL', 'Specific hostel'],
   ],
-  HOD: [['DEPARTMENT', 'My department'], ['COURSE', 'Course in my department'], ['SEMESTER', 'Semester in my department'], ['PROFILE', 'Course + department + semester']],
-  Staff: [['DEPARTMENT', 'My department'], ['COURSE', 'Course in my department'], ['SEMESTER', 'Semester in my department'], ['PROFILE', 'Course + department + semester']],
+  HOD: [
+    ['ALL_STUDENTS', 'All Students'],
+    ['DEPT_STUDENTS', 'My Department — All Student Years'],
+    ['DEPT_YEAR', 'My Department — Specific Student Year'],
+    ['DEPT_FACULTY', 'My Department Staff'],
+  ],
+  Staff: [
+    ['ALL_STUDENTS', 'All Students'],
+    ['DEPT_STUDENTS', 'My Department — All Years'],
+    ['DEPT_YEAR', 'My Department — Specific Year'],
+  ],
   'Sports Captain': [['SPORTS', 'Sports students'], ['SPORT', 'Specific sport'], ['TEAM', 'Specific team'], ['EVENT', 'Specific event / trial'], ['ACTIVE', 'Selected / active participants']],
 }
 const roleOptions = ['Student', 'Staff', 'HOD', 'Sports Captain', 'Administration']
@@ -27,7 +37,7 @@ function emptyDraft(user) {
   return {
     title: '', description: '', category: user.role === 'Sports Captain' ? 'Sports' : 'Academic',
     priority: 'Normal', pinned: false,
-    target: { type: user.role === 'Administration' ? 'EVERYONE' : user.role === 'Sports Captain' ? 'SPORTS' : 'DEPARTMENT', department: user.department || '', course: '', semester: '', role: '', sportId: '', teamId: '', eventId: '', hostel: '' },
+    target: { type: user.role === 'Administration' ? 'EVERYONE' : user.role === 'Sports Captain' ? 'SPORTS' : ['HOD', 'Staff'].includes(user.role) ? 'ALL_STUDENTS' : 'DEPARTMENT', department: user.department || '', course: '', semester: '', year: '', role: '', sportId: '', teamId: '', eventId: '', hostel: '' },
     publishAt: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     expiresAt: '', attachmentUrl: '', attachmentName: '',
   }
@@ -109,6 +119,7 @@ export default function NoticeBoard({ user, onNotify }) {
   const targetTeam = targetType === 'TEAM'
   const targetEvent = targetType === 'EVENT'
   const lockedDepartment = ['HOD', 'Staff'].includes(user.role)
+  const departmentAudience = ['DEPT_STUDENTS', 'DEPT_YEAR', 'DEPT_FACULTY', 'DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE'].includes(targetType)
 
   return <div className="module-page page-enter notice-board-page">
     <div className="module-breadcrumb">CAMPUS <span>›</span> NOTICES & ANNOUNCEMENTS</div>
@@ -120,8 +131,9 @@ export default function NoticeBoard({ user, onNotify }) {
         <label className="sports-field"><span>Notice title</span><input required minLength={3} maxLength={180} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })}/></label>
         <label className="sports-field"><span>Category</span><select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value, target: event.target.value === 'Emergency' ? { ...draft.target, type: 'EVERYONE' } : draft.target })}>{categories.map((value) => <option key={value}>{value}</option>)}</select></label>
         <label className="sports-field"><span>Priority</span><select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value })}>{priorityOptions.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label className="sports-field"><span>Target audience</span><select value={targetType} onChange={(event) => setDraft({ ...draft, target: { ...draft.target, type: event.target.value, department: lockedDepartment ? user.department || '' : '' } })}>{allowedAudiences.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        {['DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE'].includes(targetType) && <label className="sports-field"><span>Department</span>{lockedDepartment ? <input value={user.department || ''} readOnly aria-label="Your department"/> : <select required value={draft.target.department} onChange={(event) => updateTarget('department', event.target.value)}><option value="">Select department</option>{(options?.departments || []).map((value) => <option key={value}>{value}</option>)}</select>}</label>}
+        <label className="sports-field"><span>{['Staff', 'HOD'].includes(user.role) ? 'Who should receive this notice?' : 'Target audience'}</span><select value={targetType} onChange={(event) => setDraft({ ...draft, target: { ...draft.target, type: event.target.value, department: lockedDepartment ? user.department || '' : '', year: '' } })}>{allowedAudiences.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        {departmentAudience && <label className="sports-field"><span>Department</span>{lockedDepartment ? <input value={user.department || ''} readOnly aria-label="Your department"/> : <select required value={draft.target.department} onChange={(event) => updateTarget('department', event.target.value)}><option value="">Select department</option>{(options?.departments || []).map((value) => <option key={value}>{value}</option>)}</select>}</label>}
+        {targetType === 'DEPT_YEAR' && <label className="sports-field"><span>Year</span><select required value={draft.target.year} onChange={(event) => updateTarget('year', event.target.value)}><option value="">Select year</option>{studentYears.map((year) => <option key={year}>{year}</option>)}</select></label>}
         {['COURSE', 'PROFILE'].includes(targetType) && <label className="sports-field"><span>Course</span><input required={targetType === 'COURSE' || targetType === 'PROFILE'} value={draft.target.course} onChange={(event) => updateTarget('course', event.target.value)} placeholder="e.g. B.Tech"/></label>}
         {['SEMESTER', 'PROFILE'].includes(targetType) && <label className="sports-field"><span>Semester / year</span><input required value={draft.target.semester} onChange={(event) => updateTarget('semester', event.target.value)} placeholder="e.g. Semester 3"/></label>}
         {targetType === 'ROLE' && <label className="sports-field"><span>Role</span><select required value={draft.target.role} onChange={(event) => updateTarget('role', event.target.value)}><option value="">Select role</option>{roleOptions.map((value) => <option key={value}>{value}</option>)}</select></label>}
@@ -137,7 +149,7 @@ export default function NoticeBoard({ user, onNotify }) {
         <label className="notice-pin-option"><input type="checkbox" checked={draft.pinned} onChange={(event) => setDraft({ ...draft, pinned: event.target.checked })}/> Pin as an important notice</label>
         <button className="module-primary" disabled={busy}>{busy ? 'Publishing…' : 'Publish notice'}</button>
       </div>
-      {['HOD', 'Staff'].includes(user.role) && <p className="sports-empty">Your audience is restricted to {user.department || 'your assigned department'}; broader campus audiences are not available.</p>}
+      {['HOD', 'Staff'].includes(user.role) && departmentAudience && <p className="sports-empty">Department is set from your signed-in account: {user.department || 'not assigned'}.</p>}
       {user.role === 'Sports Captain' && <p className="sports-empty">Sports notices are delivered only to relevant sports applicants or active participants.</p>}
     </form>}
     <section className="notice-toolbar">
@@ -147,8 +159,31 @@ export default function NoticeBoard({ user, onNotify }) {
     </section>
     {filtered.length ? <section className="notice-list">{filtered.map((notice) => <button className={`notice-card ${notice.isRead ? 'notice-read' : 'notice-unread'}`} key={notice.id} onClick={() => openNotice(notice)}>
       <span className={`notice-priority-mark ${notice.priority?.toLowerCase() || 'normal'}`}>{notice.pinned || notice.important ? <Pin size={15}/> : <Bell size={15}/>}</span>
-      <span className="notice-card-main"><span className="notice-card-meta"><b>{notice.category || 'General'}</b><span>{notice.priority || 'Normal'}</span>{!notice.isRead && <i>UNREAD</i>}</span><strong>{notice.title}</strong><span className="notice-card-preview">{notice.description}</span><small><CalendarDays size={13}/>{new Date(notice.publishAt || notice.createdAt).toLocaleString()} · {notice.issuerName || 'Campus One'} · {notice.issuerRole || 'Administration'}</small></span>
+      <span className="notice-card-main"><span className="notice-card-meta"><b>{notice.category || 'General'}</b><span>{notice.priority || 'Normal'}</span>{!notice.isRead && <i>UNREAD</i>}</span><strong>{notice.title}</strong><span className="notice-card-preview">{notice.description}</span><small className="notice-card-audience">Audience: {noticeAudienceLabel(notice)}</small><small><CalendarDays size={13}/>{new Date(notice.publishAt || notice.createdAt).toLocaleString()} · {notice.issuerName || 'Campus One'} · {notice.issuerRole || 'Administration'}</small></span>
     </button>)}</section> : <div className="management-state">{notices.length ? 'No notices match your search or filters.' : 'No notices are currently available to you.'}</div>}
-    {detail && <div className="modal-backdrop notice-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null) }}><article className="notice-detail-modal" role="dialog" aria-modal="true" aria-labelledby="notice-detail-title"><header><div><span className="section-eyebrow">{detail.category} · {detail.priority}</span><h2 id="notice-detail-title">{detail.title}</h2></div><button className="icon-btn" aria-label="Close notice" onClick={() => setDetail(null)}><X size={18}/></button></header><p className="notice-issuer-line">Issued by {detail.issuerName} · {detail.issuerRole} · {new Date(detail.publishAt || detail.createdAt).toLocaleString()}</p><div className="notice-detail-content">{detail.description}</div>{detail.attachmentUrl && <a className="notice-attachment" href={detail.attachmentUrl} target="_blank" rel="noreferrer"><FileText size={16}/>{detail.attachmentName || 'View attached PDF'}<ExternalLink size={13}/></a>}<button className="module-primary" onClick={() => setDetail(null)}>Done</button></article></div>}
+    {detail && <div className="modal-backdrop notice-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null) }}><article className="notice-detail-modal" role="dialog" aria-modal="true" aria-labelledby="notice-detail-title"><header><div><span className="section-eyebrow">{detail.category} · {detail.priority}</span><h2 id="notice-detail-title">{detail.title}</h2></div><button className="icon-btn" aria-label="Close notice" onClick={() => setDetail(null)}><X size={18}/></button></header><p className="notice-issuer-line">Issued by {detail.issuerName} · {detail.issuerRole} · {new Date(detail.publishAt || detail.createdAt).toLocaleString()}</p><p className="notice-issuer-line">Audience: {noticeAudienceLabel(detail)}</p><div className="notice-detail-content">{detail.description}</div>{detail.attachmentUrl && <a className="notice-attachment" href={detail.attachmentUrl} target="_blank" rel="noreferrer"><FileText size={16}/>{detail.attachmentName || 'View attached PDF'}<ExternalLink size={13}/></a>}<button className="module-primary" onClick={() => setDetail(null)}>Done</button></article></div>}
   </div>
+}
+
+function noticeAudienceLabel(notice) {
+  const target = notice.target || {}
+  const department = target.department || ''
+  if (target.type === 'ALL_STUDENTS') return 'All Students'
+  if (target.type === 'DEPT_STUDENTS') return `${department} • All Years`
+  if (target.type === 'DEPT_YEAR') return `${department} • ${target.year}`
+  if (target.type === 'DEPT_FACULTY') return `${department} • Department Staff`
+  if (target.type === 'EVERYONE') return 'Everyone'
+  if (target.type === 'STUDENTS') return 'Students'
+  if (target.type === 'DEPARTMENT') return `${department} • All roles`
+  if (target.type === 'PROFILE') return [department, target.course, target.semester].filter(Boolean).join(' • ')
+  if (target.type === 'COURSE') return [department, target.course].filter(Boolean).join(' • ')
+  if (target.type === 'SEMESTER') return [department, target.semester].filter(Boolean).join(' • ')
+  if (target.type === 'ROLE') return target.role || 'Selected role'
+  if (target.type === 'HOSTEL') return target.hostel || 'Selected hostel'
+  if (target.type === 'SPORTS') return 'Sports students'
+  if (target.type === 'SPORT') return 'Selected sport'
+  if (target.type === 'TEAM') return 'Selected team'
+  if (target.type === 'EVENT') return 'Selected event'
+  if (target.type === 'ACTIVE') return 'Selected active participants'
+  return 'Selected audience'
 }

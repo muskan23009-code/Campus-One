@@ -14,6 +14,7 @@ const fixtures = [
   { id: 'PM-AD001', role: 'Administration', name: 'Campus Admin' },
   { id: 'PM-S1001', role: 'Student', name: 'Student One' },
   { id: 'PM-S1002', role: 'Student', name: 'Student Two' },
+  { id: 'PM-SC001', role: 'Sports Captain', name: 'Campus Sports Captain' },
   { id: 'PM-ST001', role: 'Staff', name: 'Campus Staff' },
 ]
 
@@ -130,6 +131,25 @@ test('anonymous submissions stay private while students can track their own reco
   assert.equal(invalidCategory.response.status, 400)
 })
 
+test('Sports Captains can use student Campus Voice submissions without administration controls', async () => {
+  const created = await request('/api/campus-voice/submissions', {
+    method: 'POST',
+    cookie: cookie('PM-SC001'),
+    body: {
+      kind: 'IDEA', type: 'Idea', category: 'Sports',
+      title: 'More outdoor seating', description: 'Add seating near the outdoor sports practice area.',
+    },
+  })
+  assert.equal(created.response.status, 201)
+  const own = await request('/api/campus-voice/submissions', { cookie: cookie('PM-SC001') })
+  assert.equal(own.response.status, 200)
+  assert.equal(own.result.submissions.some((item) => item.id === created.result.submission.id), true)
+  const adminOnly = await request(`/api/campus-voice/submissions/${created.result.submission.id}`, {
+    method: 'PATCH', cookie: cookie('PM-SC001'), body: { status: 'Implemented' },
+  })
+  assert.equal(adminOnly.response.status, 403)
+})
+
 test('ideas are public without author details, support is unique, and only Administration can mark implementation', async () => {
   const created = await submit({
     kind: 'IDEA',
@@ -144,17 +164,20 @@ test('ideas are public without author details, support is unique, and only Admin
   assert.equal(created.result.submission.supportCount, 0)
 
   const publicIdeas = await request('/api/campus-voice/ideas', { cookie: cookie('PM-S1002') })
-  assert.equal(publicIdeas.result.ideas.length, 1)
-  assert.equal(Object.hasOwn(publicIdeas.result.ideas[0], 'submitterId'), false)
-  assert.equal(Object.hasOwn(publicIdeas.result.ideas[0], 'supporters'), false)
-
   const ideaId = created.result.submission.id
+  const publicIdea = publicIdeas.result.ideas.find((idea) => idea.id === ideaId)
+  assert.ok(publicIdea)
+  assert.equal(Object.hasOwn(publicIdea, 'submitterId'), false)
+  assert.equal(Object.hasOwn(publicIdea, 'supporters'), false)
+  const captainSupport = await request(`/api/campus-voice/ideas/${ideaId}/support`, { method: 'POST', cookie: cookie('PM-SC001') })
+  assert.equal(captainSupport.response.status, 200)
+  assert.equal(captainSupport.result.idea.supportCount, 1)
   let support = await request(`/api/campus-voice/ideas/${ideaId}/support`, { method: 'POST', cookie: cookie('PM-S1002') })
   assert.equal(support.response.status, 200)
-  assert.equal(support.result.idea.supportCount, 1)
+  assert.equal(support.result.idea.supportCount, 2)
   assert.equal(support.result.idea.supportedByMe, true)
   support = await request(`/api/campus-voice/ideas/${ideaId}/support`, { method: 'POST', cookie: cookie('PM-S1002') })
-  assert.equal(support.result.idea.supportCount, 0, 'a second support request removes the current user support')
+  assert.equal(support.result.idea.supportCount, 1, 'a second support request removes the current user support')
 
   const needsUpdate = await request(`/api/campus-voice/submissions/${ideaId}`, {
     method: 'PATCH', cookie: cookie('PM-AD001'), body: { status: 'Implemented' },

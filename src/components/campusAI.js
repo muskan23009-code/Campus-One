@@ -1,4 +1,4 @@
-import { canSeePage, APP_ROLES } from '../auth/access'
+import { canSeePage, isStudentExperienceRole } from '../auth/access'
 
 const quickActions = [
   { id: 'notices', label: 'My notices', prompt: 'What notices are available to me?', page: 'notices', icon: 'Bell', accent: 'blue' },
@@ -13,7 +13,7 @@ const quickActions = [
 
 export function getCampusAIQuickActions(user) {
   return quickActions.filter(({ page, studentOnly }) =>
-    canSeePage(user, page) && (!studentOnly || user.role === APP_ROLES.STUDENT),
+    canSeePage(user, page) && (!studentOnly || isStudentExperienceRole(user.role)),
   )
 }
 
@@ -23,7 +23,6 @@ export function getCampusAIHelpLinks(user) {
     ['Lost & Found', 'lost-found'],
     ['Notices', 'notices'],
     ['Events & clubs', 'events'],
-    ['Campus Directory', 'directory'],
     ['Emergency', 'emergency'],
   ].filter(([, page]) => canSeePage(user, page))
 }

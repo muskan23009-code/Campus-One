@@ -12,7 +12,6 @@ export const navigationGroups = [
   {
     label: 'STUDENT LIFE',
     items: [
-      { id: 'directory', label: 'Campus database', icon: 'ContactRound' },
       { id: 'skill-exchange', label: 'Skill Exchange', icon: 'UsersRound' },
       { id: 'teacher-review', label: 'Teacher Review', icon: 'GraduationCap' },
       { id: 'sports', label: 'Sports & wellness', icon: 'Activity' },
@@ -78,15 +77,15 @@ export const moduleDetails = {
   copilot: {
     eyebrow: 'YOUR CAMPUS, IN THE KNOW',
     title: 'AI Campus Copilot',
-    description: 'Your round-the-clock campus companion, ready to help with the things that matter.',
+    description: 'Explore campus services and discover useful starting points across Campus One.',
     icon: 'Sparkles',
     accent: 'mint',
-    stats: [['Always on', 'Available 24/7'], ['Made for you', 'Campus-trained AI'], ['Good to know', 'Private conversations']],
-    suggestions: ['Where can I find campus dining?', 'How do I apply for a bonafide certificate?', 'What is happening on campus this week?'],
+    stats: [],
+    suggestions: ['Explore campus services', 'Browse events and clubs', 'Open campus support'],
     rows: [
-      ['Academics', 'How to find your next exam, class or assignment deadline.', 'Ask about coursework'],
-      ['Campus services', 'Get a straight answer about offices, hours and processes.', 'Find a service'],
-      ['Your student life', 'Discover events, activities, clubs and places on campus.', 'Explore campus'],
+      ['Campus services', 'Browse available campus services.', 'Explore services'],
+      ['Campus life', 'Find activities and campus support.', 'Explore campus'],
+      ['Need assistance?', 'Open a campus support request.', 'Make a request'],
     ],
   },
   notices: {
@@ -123,14 +122,6 @@ export const moduleDetails = {
       ['North student mess', 'Food · 6-minute walk · Moderate wait', 'Get directions'],
       ['Infirmary', 'Health · Ground floor, student services building', 'Get directions'],
     ],
-  },
-  directory: {
-    eyebrow: 'THE PEOPLE & PLACES THAT MAKE CAMPUS',
-    title: 'Campus directory',
-    description: 'Find faculty, departments, campus services and the right person to talk to.',
-    icon: 'ContactRound', accent: 'blue',
-    stats: [['Faculty', 'Search departments'], ['Student services', '8 campus offices'], ['Campus places', 'Always discoverable']],
-    rows: [['School of Engineering', 'Academic office · Academic Block A · Mon–Fri, 9 am–4 pm', 'Contact department'], ['Student affairs', 'Student services · Administration building · Mon–Sat, 9 am–5 pm', 'Contact office'], ['Health & wellness', 'Campus infirmary · Student services building · Everyday, 8 am–8 pm', 'Get in touch'], ['Registrar’s office', 'Academic records · Administration building · Mon–Fri, 9 am–4 pm', 'Contact registrar']],
   },
   sports: {
     eyebrow: 'FIND YOUR KIND OF ACTIVE',

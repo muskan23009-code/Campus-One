@@ -88,8 +88,9 @@ test('active Staff and HOD accounts populate the faculty list without student da
     ['PM-ST001', 'Staff'], ['PM-HOD001', 'HOD'],
   ])
   assertNoStudentIdentity(result.result)
-  const forbiddenRole = await request('/api/teacher-reviews/faculty', { cookie: cookie('PM-SC001') })
-  assert.equal(forbiddenRole.response.status, 403)
+  const captainStudentView = await request('/api/teacher-reviews/faculty', { cookie: cookie('PM-SC001') })
+  assert.equal(captainStudentView.response.status, 200)
+  assertNoStudentIdentity(captainStudentView.result)
 })
 
 test('newly approved Staff and HOD accounts appear automatically when activated', async () => {
@@ -154,6 +155,17 @@ test('monthly reviews upsert per student and all review APIs omit student identi
     assertNoStudentIdentity(submitted.result)
   }
 
+  const captainReview = await request('/api/teacher-reviews', {
+    method: 'POST', cookie: cookie('PM-SC001'),
+    body: { facultyId: 'PM-ST001', rating: 4, feedback: 'Useful practical guidance.' },
+  })
+  assert.equal(captainReview.response.status, 201)
+  assertNoStudentIdentity(captainReview.result)
+  const captainMine = await request('/api/teacher-reviews/mine', { cookie: cookie('PM-SC001') })
+  assert.equal(captainMine.response.status, 200)
+  assert.equal(captainMine.result.reviews.length, 1)
+  assertNoStudentIdentity(captainMine.result)
+
   const mine = await request('/api/teacher-reviews/mine', { cookie: cookie('PM-S1001') })
   assert.equal(mine.result.reviews.length, 1)
   assert.equal(mine.result.reviews[0].facultyName, 'Riley Faculty')
@@ -163,7 +175,7 @@ test('monthly reviews upsert per student and all review APIs omit student identi
   const summary = await request('/api/teacher-reviews/staff?facultyId=PM-HOD001', { cookie: cookie('PM-ST001') })
   assert.equal(summary.response.status, 200)
   assert.equal(summary.result.summary.faculty.name, 'Riley Faculty')
-  assert.equal(summary.result.summary.totalReviews, 3)
+  assert.equal(summary.result.summary.totalReviews, 4)
   assertNoStudentIdentity(summary.result)
   const staffCannotSeeOther = await request('/api/teacher-reviews/admin', { cookie: cookie('PM-ST001') })
   assert.equal(staffCannotSeeOther.response.status, 403)
@@ -176,7 +188,7 @@ test('monthly reviews upsert per student and all review APIs omit student identi
   const admin = await request('/api/teacher-reviews/admin', { cookie: cookie('PM-AD001') })
   assert.equal(admin.response.status, 200)
   assert.equal(admin.result.rankings.some((entry) => entry.faculty.id === 'PM-ST001'), true)
-  assert.equal(admin.result.reviews.length, 3)
+  assert.equal(admin.result.reviews.length, 4)
   assertNoStudentIdentity(admin.result)
 
   const hidden = await request(`/api/teacher-reviews/admin/${encodeURIComponent(first.result.review.id)}`, {
@@ -186,8 +198,8 @@ test('monthly reviews upsert per student and all review APIs omit student identi
   assertNoStudentIdentity(hidden.result)
   const adminAfterModeration = await request('/api/teacher-reviews/admin', { cookie: cookie('PM-AD001') })
   assert.equal(adminAfterModeration.result.reviews.find((review) => review.id === first.result.review.id).status, 'Hidden')
-  assert.equal(adminAfterModeration.result.summaries.find((entry) => entry.faculty.id === 'PM-ST001').totalReviews, 2)
-  assert.equal(adminAfterModeration.result.rankings.some((entry) => entry.faculty.id === 'PM-ST001'), false)
+  assert.equal(adminAfterModeration.result.summaries.find((entry) => entry.faculty.id === 'PM-ST001').totalReviews, 3)
+  assert.equal(adminAfterModeration.result.rankings.some((entry) => entry.faculty.id === 'PM-ST001'), true)
   assertNoStudentIdentity(adminAfterModeration.result)
 })
 

@@ -8,12 +8,12 @@ export const APP_ROLES = Object.freeze({
 })
 
 export const STAFF_DEFAULT_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'events', 'hostel',
-  'directory', 'food', 'canteen', 'lost-found', 'emergency', 'sports', 'teacher-review',
+  'overview', 'copilot', 'notices', 'events', 'hostel',
+  'food', 'canteen', 'lost-found', 'emergency', 'sports', 'teacher-review',
 ])
 
 export const STUDENT_ALLOWED_MODULES = Object.freeze([
-  'overview', 'notices', 'copilot', 'food', 'navigation', 'directory',
+  'overview', 'notices', 'copilot', 'food', 'navigation',
   'canteen', 'complaints', 'sports', 'events', 'hostel',
   'lost-found', 'emergency', 'campus-voice', 'skill-exchange',
 ])
@@ -22,6 +22,10 @@ export const ROLE_START_PAGES = Object.freeze({
   Student: 'overview', Staff: 'overview', HOD: 'overview',
   Administration: 'overview', 'Sports Captain': 'overview', 'Canteen Staff': 'canteen',
 })
+
+export function isStudentExperienceRole(role) {
+  return [APP_ROLES.STUDENT, APP_ROLES.SPORTS].includes(role)
+}
 
 export const LOGIN_ROLES = Object.freeze([
   { role: APP_ROLES.STUDENT, label: 'Student Login', icon: 'GraduationCap' },
@@ -34,13 +38,15 @@ export const LOGIN_ROLES = Object.freeze([
 
 export function canSeePage(user, page) {
   if (!user) return false
+  if (page === 'directory') return false
+  if (page === 'complaints' && [APP_ROLES.STAFF, APP_ROLES.HOD].includes(user.role)) return false
   if (page === 'profile') return true
   if (page === 'settings') return true
-  if (page === 'teacher-review') return [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.ADMIN].includes(user.role)
-  if (page === 'campus-voice') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
-  if (page === 'skill-exchange') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
+  if (page === 'teacher-review') return [APP_ROLES.STUDENT, APP_ROLES.SPORTS, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.ADMIN].includes(user.role)
+  if (page === 'campus-voice') return [APP_ROLES.STUDENT, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role)
+  if (page === 'skill-exchange') return [APP_ROLES.STUDENT, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role)
   if (page === 'library' || page === 'transport') return false
-  if (page === 'hostel') return [APP_ROLES.STUDENT, APP_ROLES.ADMIN].includes(user.role)
+  if (page === 'hostel') return [APP_ROLES.STUDENT, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role)
   if (page === 'sports-management') return [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role)
   if (user.role === APP_ROLES.CANTEEN) return page === 'canteen'
   if (user.role === APP_ROLES.ADMIN) {
@@ -48,8 +54,11 @@ export function canSeePage(user, page) {
   }
   if (page === 'overview' || page === 'unauthorized' || page === 'not-found') return true
   if (user.role === APP_ROLES.STUDENT) return STUDENT_ALLOWED_MODULES.includes(page)
-  if (user.role === APP_ROLES.STAFF) return [...STAFF_DEFAULT_MODULES, ...(user.modules || [])].includes(page)
-  if (user.role === APP_ROLES.HOD) return ['overview', 'notices', 'complaints', 'lost-found', 'food', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review'].includes(page)
+  if (user.role === APP_ROLES.STAFF) {
+    if (['analytics', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students'].includes(page)) return false
+    return [...STAFF_DEFAULT_MODULES, ...(user.modules || [])].includes(page)
+  }
+  if (user.role === APP_ROLES.HOD) return ['overview', 'copilot', 'notices', 'lost-found', 'food', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review'].includes(page)
   if (user.role === APP_ROLES.SPORTS) return [...STUDENT_ALLOWED_MODULES, 'sports-management'].includes(page)
   return false
 }

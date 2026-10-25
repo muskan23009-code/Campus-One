@@ -11,6 +11,12 @@ export const ROLES = Object.freeze({
 
 export const ROLE_VALUES = Object.freeze(Object.values(ROLES))
 
+export const STUDENT_EXPERIENCE_ROLES = Object.freeze([ROLES.STUDENT, ROLES.SPORTS])
+
+export function isStudentExperienceRole(role) {
+  return STUDENT_EXPERIENCE_ROLES.includes(role)
+}
+
 export const USER_ID_FORMATS = Object.freeze({
   [ROLES.STUDENT]: { prefix: 'PM-S', start: 1001, width: 4 },
   [ROLES.STAFF]: { prefix: 'PM-ST', start: 1, width: 3 },
@@ -21,20 +27,20 @@ export const USER_ID_FORMATS = Object.freeze({
 })
 
 export const STUDENT_MODULES = Object.freeze([
-  'overview', 'copilot', 'notices', 'food', 'canteen', 'navigation', 'directory',
+  'overview', 'copilot', 'notices', 'food', 'canteen', 'navigation',
   'complaints', 'sports', 'events', 'hostel',
   'lost-found', 'emergency',
 ])
 
 export const STAFF_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'events', 'hostel', 'canteen',
-  'directory', 'food', 'lost-found', 'emergency', 'sports', 'teacher-review',
+  'overview', 'copilot', 'notices', 'complaints', 'events', 'hostel', 'canteen',
+  'food', 'lost-found', 'emergency', 'sports', 'teacher-review',
 ])
 
 export const CANTEEN_STAFF_MODULES = Object.freeze(['canteen'])
 
 export const HOD_MODULES = Object.freeze([
-  'overview', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review',
+  'overview', 'copilot', 'notices', 'complaints', 'lost-found', 'canteen', 'department-requests', 'department-students', 'sports', 'events', 'teacher-review',
 ])
 
 export const ALL_MODULES = Object.freeze([
@@ -45,13 +51,16 @@ export const ALL_MODULES = Object.freeze([
 export function modulesForUser(user) {
   if (user.role === ROLES.ADMIN) return ALL_MODULES
   if (user.role === ROLES.CANTEEN) return CANTEEN_STAFF_MODULES
-  if (user.role === ROLES.STUDENT) return [...STUDENT_MODULES, 'teacher-review', 'campus-voice', 'skill-exchange']
+  if (isStudentExperienceRole(user.role)) {
+    return [
+      ...STUDENT_MODULES, 'teacher-review', 'campus-voice', 'skill-exchange',
+      ...(user.role === ROLES.SPORTS ? ['sports-management'] : []),
+    ]
+  }
   if (user.role === ROLES.HOD) return HOD_MODULES
   if (user.role === ROLES.STAFF) {
-    return [...new Set([...STAFF_MODULES, ...(user.modules || [])])]
-  }
-  if (user.role === ROLES.SPORTS) {
-    return [...new Set([...STUDENT_MODULES, 'sports-management'])]
+    const restrictedModules = ['analytics', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'directory']
+    return [...new Set([...STAFF_MODULES, ...(user.modules || []).filter((moduleId) => !restrictedModules.includes(moduleId))])]
   }
   return []
 }
@@ -154,11 +163,10 @@ export const INITIAL_CANTEEN_MENU = Object.freeze([
     diet, category, name, price, size: size || '', available: true, description: '',
   })))
 export function canAccess(user, moduleId) {
-  if (moduleId === 'teacher-review') return [ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)
-  if (moduleId === 'campus-voice') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
-  if (moduleId === 'skill-exchange') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
+  if (moduleId === 'directory') return false
+  if (moduleId === 'teacher-review') return isStudentExperienceRole(user.role) || [ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)
+  if (moduleId === 'campus-voice' || moduleId === 'skill-exchange' || moduleId === 'hostel') return isStudentExperienceRole(user.role) || user.role === ROLES.ADMIN
   if (moduleId === 'library' || moduleId === 'transport') return false
-  if (moduleId === 'hostel') return [ROLES.STUDENT, ROLES.ADMIN].includes(user.role)
   return modulesForUser(user).includes(moduleId)
 }
 

@@ -103,11 +103,10 @@ test('all five roles can persist lost and found reports with server-assigned ide
   const roles = ['Student', 'Staff', 'HOD', 'Sports Captain', 'Administration']
   const created = []
   for (const role of roles) {
-    const category = role === 'Sports Captain' ? 'Sports Equipment' : 'Wallet/Bag'
     for (const type of ['LOST', 'FOUND']) {
       const result = await createReport(role, type, {
         itemName: `${role} ${type.toLowerCase()} campus bag`,
-        category,
+        category: 'Wallet/Bag',
         reporterId: 'forged-id',
         reporterName: 'Forged name',
         reporterRole: 'Administration',
@@ -268,6 +267,11 @@ test('HOD and Sports Captain management stays within department and category sco
   })
   assert.equal(sportDenied.response.status, 403)
   const civilReport = await createReport('PM-S1002', 'FOUND', { itemName: 'Civil workshop key', category: 'Keys' })
+  const captainList = await request('/api/lost-found', { cookie: cookie('PM-SC001') })
+  const visibleCivilReport = captainList.result.reports.find((item) => item.id === civilReport.result.report.id)
+  assert.ok(visibleCivilReport, 'Sports Captain can search all Student Lost & Found reports')
+  assert.equal(visibleCivilReport.reporterId, null, 'Other users remain private in the shared Student listing')
+  assert.equal(visibleCivilReport.reporterName, null)
   const hodList = await request('/api/lost-found', { cookie: cookie('PM-HOD001') })
   assert.ok(hodList.result.reports.every((item) => item.department === 'Computer Science' || item.reporterId === 'PM-HOD001'))
   const crossDepartmentClaim = await request(`/api/lost-found/${civilReport.result.report.id}/claims`, {

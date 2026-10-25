@@ -208,6 +208,7 @@ test('all five customer roles can order privately and only Canteen Staff manage 
   }
   assert.ok((await request('/api/auth/me', { cookie: roleCookies.get('Sports Captain') })).result.modules.includes('copilot'))
   assert.ok((await request('/api/auth/me', { cookie: roleCookies.get('Sports Captain') })).result.modules.includes('sports-management'))
+  assert.equal((await request('/api/canteen/cart', { cookie: roleCookies.get('Sports Captain') })).response.status, 200)
 
   const customerOrderIds = new Map()
   for (const role of ['Student', 'Staff', 'HOD', 'Sports Captain', 'Administration']) {

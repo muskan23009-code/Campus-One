@@ -1,22 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BriefcaseBusiness, Building2, Check,
-  GraduationCap, KeyRound, LockKeyhole, ShieldCheck, Trophy, Utensils,
+  GraduationCap, IdCard, KeyRound, LockKeyhole, Presentation, ShieldCheck, Trophy, Utensils,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { APP_ROLES, LOGIN_ROLES } from '../auth/access'
 
-const ROLE_ICONS = { GraduationCap, BriefcaseBusiness, Building2, ShieldCheck, Trophy, Utensils }
+const ROLE_ICONS = { GraduationCap, BriefcaseBusiness: Presentation, Building2, ShieldCheck: BriefcaseBusiness, Trophy, Utensils }
+const ROLE_DESCRIPTIONS = {
+  Student: 'Classes and campus life',
+  Staff: 'Teaching and campus services',
+  HOD: 'Department leadership',
+  'Sports Captain': 'Teams and athletics',
+  Administration: 'Campus management',
+  'Canteen Staff': 'Food and orders',
+}
 const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say']
 
 export function RoleChooser({ onChoose }) {
   return <AuthLayout story="A campus that feels like yours." storyLine="Your community, services and campus life. Just where you need them.">
-    <span className="login-welcome-label">PURAN MURTI VIDYAPEETH</span>
-    <h2>Welcome to campus.</h2>
-    <p className="login-description">Choose your campus account to continue.</p>
-    <div className="auth-role-options">{LOGIN_ROLES.map(({ role, label, icon }) => {
+    <span className="login-welcome-label">CAMPUS ONE · PURAN MURTI VIDYAPEETH</span>
+    <h2>Welcome Back</h2>
+    <p className="login-description">Sign in to your digital campus.</p>
+    <span className="auth-role-prompt">Choose your role to continue</span>
+    <div className="auth-role-options">{LOGIN_ROLES.map(({ role, icon }) => {
       const Icon = ROLE_ICONS[icon]
-      return <button className="auth-role-option" key={role} onClick={() => onChoose(role)}><span className="auth-role-icon"><Icon size={17}/></span><span>{label}</span><ArrowRight size={15}/></button>
+      return <button type="button" className="auth-role-option" key={role} aria-label={`Continue as ${role}`} onClick={() => onChoose(role)}><span className="auth-role-icon"><Icon size={18}/></span><span className="auth-role-copy"><strong>{role}</strong><small>{ROLE_DESCRIPTIONS[role]}</small></span><ArrowRight size={15}/></button>
     })}</div>
     <span className="login-security"><ShieldCheck size={15}/><span>Protected campus accounts<small>Selecting a role only opens its sign-in form. It does not create an account.</small></span></span>
   </AuthLayout>
@@ -36,12 +45,13 @@ export function RoleLoginView({ role, onBack, onRegister, onSubmit, busy, error 
 
   return <AuthLayout story="One account. Your campus, closer." storyLine="Your verified campus role connects you to the services you need.">
     <button className="auth-back-link" onClick={onBack}><ArrowLeft size={14}/> All login options</button>
-    <span className="auth-selected-role"><Icon size={16}/>{account.label}</span>
-    <h2>Welcome back.</h2>
-    <p className="login-description">Sign in with the User ID assigned to your campus account.</p>
+    <span className="auth-selected-role"><Icon size={17}/>{role}</span>
+    <span className="login-welcome-label">CAMPUS ONE · SECURE SIGN IN</span>
+    <h2>Welcome Back</h2>
+    <p className="login-description">Sign in to your digital campus as {role}.</p>
     <form className="login-form auth-form" onSubmit={submit}>
       <label htmlFor="role-user-id">CAMPUS USER ID</label>
-      <span className="login-input"><KeyRound size={15}/><input id="role-user-id" autoComplete="username" autoCapitalize="characters" spellCheck="false" placeholder={idExample(role)} value={userId} onChange={(event) => setUserId(event.target.value.toUpperCase())} required/></span>
+      <span className="login-input"><IdCard size={16}/><input id="role-user-id" autoComplete="username" autoCapitalize="characters" spellCheck="false" placeholder={idExample(role)} value={userId} onChange={(event) => setUserId(event.target.value.toUpperCase())} required/></span>
       <div className="password-label-row"><label htmlFor="role-password">PASSWORD</label><span>Role verified securely</span></div>
       <span className="login-input"><LockKeyhole size={15}/><input id="role-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button className="password-visibility" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button></span>
       {error && <span className="login-form-error" role="alert">{error}</span>}
@@ -271,7 +281,7 @@ export function RegistrationStatus({ status, onBack, onPasswordCreated }) {
 }
 
 function AuthLayout({ children, story, storyLine }) {
-  return <main className="login-shell page-enter"><section className="login-photo" aria-label="Puran Murti Vidyapeeth campus"><div className="login-photo-background"/><div className="login-image-shade"/><div className="login-brand"><span className="brand-mark"><span/><span/><span/><span/></span><span className="brand-name">campus<span>one</span></span></div><div className="login-story"><span className="login-kicker"><span/> CAMPUS, CONNECTED</span><h1>{story}</h1><p>{storyLine}</p><span className="login-campus-label"><span className="institution-mark">P</span><span>Puran Murti Vidyapeeth<small>Sonipat, Haryana</small></span></span></div><span className="login-image-credit">PURAN MURTI VIDYAPEETH · YOUR CAMPUS, CLOSER</span></section><section className="login-form-side"><div className="login-form-wrap auth-panel">{children}</div></section></main>
+  return <main className="login-shell page-enter"><section className="login-photo" aria-label="Puran Murti Vidyapeeth campus"><div className="login-photo-background"/><div className="login-image-shade"/><div className="login-brand"><span className="brand-mark"><span/><span/><span/><span/></span><span className="brand-name">CAMPUS <span>ONE</span></span></div><div className="login-story"><span className="login-kicker"><span/> CAMPUS, CONNECTED</span><h1>{story}</h1><p>{storyLine}</p><span className="login-campus-label"><span className="institution-mark">P</span><span>PURAN MURTI VIDYAPEETH<small>Sonipat, Haryana</small></span></span></div><span className="login-image-credit">PURAN MURTI VIDYAPEETH · YOUR CAMPUS, CLOSER</span></section><section className="login-form-side"><div className="login-form-wrap auth-panel">{children}</div></section></main>
 }
 
 function idExample(role) {

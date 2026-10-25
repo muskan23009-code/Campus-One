@@ -5,6 +5,7 @@ import {
   UserRound, UsersRound, X,
 } from 'lucide-react'
 import { api } from '../api/client'
+import { isStudentExperienceRole } from '../auth/access'
 
 export default function ProfilePage({ user, onUserChange, onNotify }) {
   const [profile, setProfile] = useState(user)
@@ -97,10 +98,11 @@ export default function ProfilePage({ user, onUserChange, onNotify }) {
   }
 
   const initials = (profile.name || '').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
-  const idLabel = profile.role === 'Student' ? 'User ID' : 'Employee / User ID'
+  const studentExperience = isStudentExperienceRole(profile.role)
+  const idLabel = studentExperience ? 'User ID' : 'Employee / User ID'
   const details = [
     { label: idLabel, value: profile.id, Icon: IdCard },
-    ...(profile.role === 'Student' && profile.rollNumber ? [{ label: 'Student ID', value: profile.rollNumber, Icon: GraduationCap }] : []),
+    ...(studentExperience && profile.rollNumber ? [{ label: 'Student ID', value: profile.rollNumber, Icon: GraduationCap }] : []),
     ...(profile.department ? [{ label: 'Department', value: profile.department, Icon: UsersRound }] : []),
     ...(profile.email ? [{ label: 'Email', value: profile.email, Icon: Mail }] : []),
     ...(profile.mobile ? [{ label: 'Phone', value: profile.mobile, Icon: Phone }] : []),
@@ -135,7 +137,7 @@ export default function ProfilePage({ user, onUserChange, onNotify }) {
             <span className={`profile-role-badge profile-role-${roleClass(profile.role)}`}>{profile.role}</span>
             {profile.department && <span className="profile-identity-department">{profile.department}</span>}
           </div>
-          <span className="profile-identity-id"><IdCard size={14}/>{profile.role === 'Student' && profile.rollNumber ? profile.rollNumber : profile.id}</span>
+          <span className="profile-identity-id"><IdCard size={14}/>{studentExperience && profile.rollNumber ? profile.rollNumber : profile.id}</span>
         </div>
         <span className="profile-seal"><ShieldCheck size={22}/><small>VERIFIED<br/>ACCOUNT</small></span>
       </div>

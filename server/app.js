@@ -11,7 +11,7 @@ import {
   DEFAULT_CANTEEN_CATALOG, DEFAULT_SPORTS_DATA, DEPARTMENTS,
   EMERGENCY_CONTACT_CATEGORIES, EMERGENCY_CONTACT_CATEGORY_VALUES,
   INITIAL_CANTEEN_MENU, LEGACY_DEPARTMENTS, MANAGEMENT_COLLECTIONS,
-  ROLE_VALUES, ROLES, STAFF_MODULES, STUDENT_MODULES, USER_ID_FORMATS,
+  isStudentExperienceRole, ROLE_VALUES, ROLES, STAFF_MODULES, STUDENT_MODULES, USER_ID_FORMATS,
   canAccess, modulesForUser,
 } from './policy.js'
 import {
@@ -800,7 +800,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     )) return reject(response, 403, 'Change your temporary password before continuing.')
 
     if (pathname.startsWith('/api/teacher-reviews')) {
-      if (![ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Your role cannot access Teacher Review.')
+      if (![ROLES.STUDENT, ROLES.SPORTS, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Your role cannot access Teacher Review.')
       const month = searchParams.get('month') || currentReviewMonth()
       if (!validReviewMonth(month)) return reject(response, 400, 'Choose a valid review month.')
       const data = await store.read()
@@ -810,7 +810,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const reviews = data.teacherReviews
 
       if (pathname === '/api/teacher-reviews/faculty' && request.method === 'GET') {
-        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to browse faculty.')
+        if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Student access is required to browse faculty.')
         const summaries = activeFaculty.map((member) => makeReviewSummary(member, reviews, month))
         return json(response, 200, {
           month,
@@ -820,7 +820,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       }
 
       if (pathname === '/api/teacher-reviews/mine' && request.method === 'GET') {
-        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to view your reviews.')
+        if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Student access is required to view your reviews.')
         const ownReviews = reviews
           .filter((review) => review.reviewerId === user.id)
           .sort((left, right) => right.month.localeCompare(left.month))
@@ -829,7 +829,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       }
 
       if (pathname === '/api/teacher-reviews' && request.method === 'POST') {
-        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student access is required to submit a review.')
+        if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Student access is required to submit a review.')
         const input = await body(request)
         const facultyId = safeText(input.facultyId, 64)
         const rating = Number(input.rating)
@@ -840,7 +840,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
         const currentMonth = currentReviewMonth()
         const saved = await store.transact((current) => {
           current.teacherReviews ??= []
-          const reviewer = current.users.find((candidate) => candidate.id === user.id && candidate.active && candidate.role === ROLES.STUDENT)
+          const reviewer = current.users.find((candidate) => candidate.id === user.id && candidate.active && isStudentExperienceRole(candidate.role))
           if (!reviewer) throw Object.assign(new Error('An active Student account is required to submit a review.'), { status: 403 })
           const member = current.users.find((candidate) => candidate.id === facultyId && candidate.active && [ROLES.STAFF, ROLES.HOD].includes(candidate.role))
           if (!member) throw Object.assign(new Error('This faculty member is not available for review.'), { status: 404 })
@@ -1361,14 +1361,14 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if ((pathname === '/api/canteen/cart' || pathname === '/api/food/cart') && request.method === 'GET') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Student cart access is required.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Student cart access is required.')
       const data = await store.read()
       const cart = (data.carts || []).find((entry) => entry.user_id === user.id)
       return json(response, 200, { cart: cart ? publicCartSummary(cart) : { id: '', user_id: user.id, created_at: null, updated_at: null, total: 0, subtotal: 0, item_count: 0, items: [] } })
     }
 
     if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can manage their cart.')
       const input = await body(request)
       const foodItemId = String(input.food_item_id || input.foodItemId || '').trim()
       if (!foodItemId) return reject(response, 400, 'Select a food item to add.')
@@ -1404,7 +1404,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'PATCH') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can manage their cart.')
       const input = await body(request)
       const itemId = String(input.id || input.itemId || '').trim()
       if (!itemId) return reject(response, 400, 'Choose a cart item to update.')
@@ -1432,7 +1432,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if ((pathname === '/api/canteen/cart/items' || pathname === '/api/food/cart/items') && request.method === 'DELETE') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can manage their cart.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can manage their cart.')
       const input = await body(request)
       const itemId = String(input.id || input.itemId || '').trim()
       if (!itemId) return reject(response, 400, 'Choose a cart item to remove.')
@@ -1450,7 +1450,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if ((pathname === '/api/canteen/checkout' || pathname === '/api/food/checkout') && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can place canteen orders.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can place canteen orders.')
       const input = await body(request)
       const fullName = safeText(input.full_name || input.fullName || user.name, 120)
       const contactNumber = safeText(input.contact_number || input.contactNumber || user.mobile || '', 24)
@@ -1885,7 +1885,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       }
 
       if (resource === 'details' && !resourceId && request.method === 'POST') {
-        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit their own Hostel details.')
+        if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can submit their own Hostel details.')
         const details = validateHostelDetails(await body(request))
         const saved = await store.transact((data) => {
           data.hostelDetails ??= []
@@ -1997,7 +1997,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       }
 
       if (resource === 'maintenance' && !resourceId && request.method === 'POST') {
-        if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only students can submit hostel maintenance requests.')
+        if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only students can submit hostel maintenance requests.')
         const requestEntry = validateHostelMaintenance(await body(request), user)
         const created = await store.transact((data) => {
           data.hostelMaintenance ??= []
@@ -2390,7 +2390,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (pathname === '/api/campus-voice/submissions' && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can submit to Campus Voice.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can submit to Campus Voice.')
       const input = await body(request)
       const kind = input.kind
       const type = safeText(input.type, 32)
@@ -2431,7 +2431,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const campusVoiceSupportRoute = pathname.match(/^\/api\/campus-voice\/ideas\/([^/]+)\/support$/)
     if (campusVoiceSupportRoute && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can support Campus Ideas.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can support Campus Ideas.')
       const submissionId = safeDecodeURIComponent(campusVoiceSupportRoute[1])
       const updated = await store.transact((data) => {
         const record = (data.campusVoiceSubmissions || []).find((item) => item.id === submissionId && item.kind === 'IDEA')
@@ -2505,7 +2505,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       const listings = (data.skillExchangeListings || [])
         .filter((listing) => {
           const owner = data.users.find((candidate) => candidate.id === listing.ownerId)
-          return owner?.active && owner.role === ROLES.STUDENT
+          return owner?.active && isStudentExperienceRole(owner.role)
         })
         .filter((listing) => searchParams.get('mine') === '1' ? listing.ownerId === user.id : listing.active)
         .filter((listing) => !searchParams.get('kind') || listing.kind === searchParams.get('kind'))
@@ -2517,7 +2517,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (pathname === '/api/skill-exchange/listings' && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can create Skill Exchange listings.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can create Skill Exchange listings.')
       const input = await body(request)
       const listing = validateSkillExchangeListing(input)
       const created = await store.transact((data) => {
@@ -2539,7 +2539,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const skillListingRoute = pathname.match(/^\/api\/skill-exchange\/listings\/([^/]+)$/)
     if (skillListingRoute && ['PATCH', 'DELETE'].includes(request.method)) {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can manage their own Skill Exchange listings.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can manage their own Skill Exchange listings.')
       const listingId = safeDecodeURIComponent(skillListingRoute[1])
       if (request.method === 'DELETE') {
         const removed = await store.transact((data) => {
@@ -2573,7 +2573,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (pathname === '/api/skill-exchange/connections' && request.method === 'GET') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can access Skill Exchange connections.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can access Skill Exchange connections.')
       const data = await store.read()
       const connections = (data.skillExchangeConnections || [])
         .filter((connection) => connection.senderId === user.id || connection.recipientId === user.id)
@@ -2582,7 +2582,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (pathname === '/api/skill-exchange/connections' && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can send Skill Exchange connection requests.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can send Skill Exchange connection requests.')
       const input = await body(request)
       const listingId = safeText(input.listingId, 64)
       const message = safeText(input.message, 500)
@@ -2607,7 +2607,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
 
     const skillConnectionRoute = pathname.match(/^\/api\/skill-exchange\/connections\/([^/]+)$/)
     if (skillConnectionRoute && request.method === 'PATCH') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can manage Skill Exchange connection requests.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can manage Skill Exchange connection requests.')
       const input = await body(request)
       if (!['ACCEPTED', 'DECLINED', 'CANCELLED'].includes(input.status)) return reject(response, 400, 'Choose Accept, Decline, or Cancel.')
       const updated = await store.transact((data) => {
@@ -2636,7 +2636,7 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
     }
 
     if (pathname === '/api/skill-exchange/reports' && request.method === 'POST') {
-      if (user.role !== ROLES.STUDENT) return reject(response, 403, 'Only Students can report Skill Exchange listings.')
+      if (!isStudentExperienceRole(user.role)) return reject(response, 403, 'Only Students can report Skill Exchange listings.')
       const input = await body(request)
       const listingId = safeText(input.listingId, 64)
       const reason = safeText(input.reason, 80)
@@ -4039,7 +4039,6 @@ function isLostFoundManager(user, report) {
 function canViewLostFound(user, report) {
   if (report.reporterId === user.id || isLostFoundManager(user, report)) return true
   if (user.role === ROLES.HOD) return Boolean(user.department) && report.department === user.department
-  if (user.role === ROLES.SPORTS) return report.category === 'Sports Equipment'
   return canAccess(user, 'lost-found')
 }
 
@@ -4587,6 +4586,7 @@ function publicNotification(notification) {
 
 const NOTICE_CATEGORIES = Object.freeze(['Academic', 'Examination', 'Department', 'Events', 'Sports', 'Hostel', 'Transport', 'Canteen', 'Library', 'Emergency', 'General', 'Other'])
 const NOTICE_PRIORITIES = Object.freeze(['Normal', 'Important', 'Urgent'])
+const NOTICE_STUDENT_YEARS = Object.freeze(['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'])
 const NOTICE_ISSUER_ROLES = Object.freeze([ROLES.ADMIN, ROLES.HOD, ROLES.STAFF, ROLES.SPORTS])
 const CAMPUS_NOTICE_ROLES = Object.freeze([ROLES.STUDENT, ROLES.STAFF, ROLES.HOD, ROLES.SPORTS, ROLES.ADMIN])
 
@@ -4600,7 +4600,7 @@ function initializeCampusNotices(data) {
   data.campus ??= {}
   if (!Array.isArray(data.campus.notices)) data.campus.notices = [...(DEFAULT_CAMPUS_DATA.notices || [])]
   const campusNoticeIds = new Set(data.campus.notices.map((notice) => notice.id))
-  const studentIds = data.users.filter((candidate) => candidate.active && candidate.role === ROLES.STUDENT).map((candidate) => candidate.id)
+  const studentIds = data.users.filter((candidate) => candidate.active && isStudentExperienceRole(candidate.role)).map((candidate) => candidate.id)
   const now = new Date().toISOString()
   for (const legacy of data.messNotices || []) {
     const id = `mess-legacy-${legacy.id}`
@@ -4693,6 +4693,7 @@ function validateCampusNotice(input, user) {
     department: safeText(input.target.department, 100),
     course: safeText(input.target.course, 100),
     semester: safeText(input.target.semester, 40),
+    year: safeText(input.target.year, 40),
     role: safeText(input.target.role, 40),
     sportId: safeText(input.target.sportId, 64),
     teamId: safeText(input.target.teamId, 64),
@@ -4710,16 +4711,25 @@ function validateCampusNotice(input, user) {
   if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.parse(publishAt))) throw Object.assign(new Error('Expiry must be after the publish date and time.'), { status: 400 })
   if (attachmentUrl && (!/^https:\/\/[^\s]+$/i.test(attachmentUrl) || !/\.pdf(?:$|[?#])/i.test(attachmentUrl))) throw Object.assign(new Error('Notice attachments must be secure HTTPS PDF links.'), { status: 400 })
   if (attachmentName && !attachmentUrl) throw Object.assign(new Error('Provide an attachment URL with its name.'), { status: 400 })
-  const audienceTypes = ['EVERYONE', 'STUDENTS', 'STAFF', 'HODS', 'ROLE', 'DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE', 'SPORTS', 'SPORT', 'TEAM', 'EVENT', 'ACTIVE', 'HOSTEL']
+  const audienceTypes = ['EVERYONE', 'STUDENTS', 'ALL_STUDENTS', 'STAFF', 'HODS', 'ROLE', 'DEPARTMENT', 'DEPT_STUDENTS', 'DEPT_YEAR', 'DEPT_FACULTY', 'COURSE', 'SEMESTER', 'PROFILE', 'SPORTS', 'SPORT', 'TEAM', 'EVENT', 'ACTIVE', 'HOSTEL']
   if (!audienceTypes.includes(target.type)) throw Object.assign(new Error('Choose a valid notice audience.'), { status: 400 })
 
   if (user.role === ROLES.SPORTS) {
     if (category !== 'Sports' || !['SPORTS', 'SPORT', 'TEAM', 'EVENT', 'ACTIVE'].includes(target.type)) throw Object.assign(new Error('Sports Captain can issue Sports notices only to sports audiences.'), { status: 403 })
   } else if ([ROLES.HOD, ROLES.STAFF].includes(user.role)) {
-    if (!['Academic', 'Examination', 'Department'].includes(category) || !['DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE'].includes(target.type)) throw Object.assign(new Error('Your role can issue department-scoped academic notices only.'), { status: 403 })
-    if (!user.department) throw Object.assign(new Error('A department must be assigned to issue department notices.'), { status: 403 })
-    if (target.department && !sameDepartment(target.department, user.department)) throw Object.assign(new Error('You cannot issue a notice for another department.'), { status: 403 })
-    target.department = user.department
+    const allowedTargets = user.role === ROLES.HOD
+      ? ['ALL_STUDENTS', 'DEPT_STUDENTS', 'DEPT_YEAR', 'DEPT_FACULTY', 'DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE']
+      : ['ALL_STUDENTS', 'DEPT_STUDENTS', 'DEPT_YEAR', 'DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE']
+    if (!['Academic', 'Examination', 'Department'].includes(category) || !allowedTargets.includes(target.type)) throw Object.assign(new Error('Your role can issue department-scoped academic notices only.'), { status: 403 })
+    if (['DEPT_STUDENTS', 'DEPT_YEAR', 'DEPT_FACULTY', 'DEPARTMENT', 'COURSE', 'SEMESTER', 'PROFILE'].includes(target.type)) {
+      if (!user.department) throw Object.assign(new Error('A department must be assigned to issue department notices.'), { status: 403 })
+      if (target.department && !sameDepartment(target.department, user.department)) throw Object.assign(new Error('You cannot issue a notice for another department.'), { status: 403 })
+      target.department = user.department
+    } else {
+      target.department = ''
+    }
+    if (target.type === 'DEPT_YEAR' && !NOTICE_STUDENT_YEARS.includes(target.year)) throw Object.assign(new Error('Choose a valid student year.'), { status: 400 })
+    if (target.type !== 'DEPT_YEAR') target.year = ''
     if (target.type === 'COURSE' && !target.course || target.type === 'SEMESTER' && !target.semester || target.type === 'PROFILE' && !target.semester) throw Object.assign(new Error('Choose the required course or semester audience.'), { status: 400 })
   }
   if (['COURSE', 'SEMESTER', 'PROFILE'].includes(target.type) && target.type === 'COURSE' && !target.course) throw Object.assign(new Error('Choose a course audience.'), { status: 400 })
@@ -4741,10 +4751,12 @@ function campusNoticeRecipients(notice, data) {
   const target = notice.target
   let users = data.users.filter((candidate) => candidate.active && CAMPUS_NOTICE_ROLES.includes(candidate.role))
   if (target.type === 'EVERYONE' || notice.category === 'Emergency') return users.map((candidate) => candidate.id)
-  if (['STUDENTS', 'STAFF', 'HODS', 'ROLE'].includes(target.type)) {
+  if (['STUDENTS', 'ALL_STUDENTS', 'STAFF', 'HODS', 'ROLE', 'DEPT_STUDENTS', 'DEPT_YEAR', 'DEPT_FACULTY'].includes(target.type)) {
     const role = target.type === 'STUDENTS' ? [ROLES.STUDENT, ROLES.SPORTS]
       : target.type === 'STAFF' ? [ROLES.STAFF]
         : target.type === 'HODS' ? [ROLES.HOD]
+          : target.type === 'ALL_STUDENTS' || target.type === 'DEPT_STUDENTS' || target.type === 'DEPT_YEAR' ? [ROLES.STUDENT, ROLES.SPORTS]
+            : target.type === 'DEPT_FACULTY' ? [ROLES.STAFF]
           : [target.role]
     users = users.filter((candidate) => role.includes(candidate.role))
   } else if (target.type === 'SPORTS') {
@@ -4777,7 +4789,18 @@ function campusNoticeRecipients(notice, data) {
   if (target.department) users = users.filter((candidate) => sameDepartment(candidate.department || '', target.department))
   if (target.course) users = users.filter((candidate) => sameNoticeValue(candidate.course || '', target.course))
   if (target.semester) users = users.filter((candidate) => sameSemester(candidate.semester || candidate.year || '', target.semester))
+  if (target.type === 'DEPT_YEAR') users = users.filter((candidate) => studentYear(candidate) === Number(target.year.match(/\d+/)?.[0]))
   return [...new Set(users.map((candidate) => candidate.id))]
+}
+
+function studentYear(student) {
+  const yearValue = String(student.year || '').trim()
+  const semesterValue = String(student.semester || '').trim()
+  const source = yearValue || semesterValue
+  const number = Number(source.match(/\d+/)?.[0])
+  if (!Number.isInteger(number) || number < 1) return null
+  if (yearValue || /year/i.test(source)) return number
+  return Math.ceil(number / 2)
 }
 
 function sameNoticeValue(left, right) {

@@ -14,6 +14,7 @@ const fixtures = [
   { id: 'PM-AD001', role: 'Administration', name: 'Campus Admin' },
   { id: 'PM-S1001', role: 'Student', name: 'Student One', department: 'Computer Science', semester: 'Semester 3', email: 'one@example.test', mobile: '9999999999' },
   { id: 'PM-S1002', role: 'Student', name: 'Student Two', department: 'Design', semester: 'Semester 5', email: 'two@example.test', mobile: '8888888888' },
+  { id: 'PM-SC001', role: 'Sports Captain', name: 'Campus Sports Captain', department: 'Computer Science' },
   { id: 'PM-ST001', role: 'Staff', name: 'Campus Staff' },
 ]
 
@@ -88,6 +89,23 @@ test('Skill Exchange endpoints require a session and restrict access and mutatio
     body: { kind: 'OFFER', skill: 'Guitar', category: 'Media', description: 'Guitar lessons for fellow students.', level: 'Advanced', helpWith: 'Practice' },
   })
   assert.equal(adminSubmit.response.status, 403)
+})
+
+test('Sports Captains can create and manage their own student Skill Exchange listings', async () => {
+  const created = await request('/api/skill-exchange/listings', {
+    method: 'POST', cookie: cookie('PM-SC001'),
+    body: { kind: 'OFFER', skill: 'Badminton basics', category: 'Sports', description: 'I can help students learn badminton basics.', level: 'Beginner', helpWith: 'Practice sessions' },
+  })
+  assert.equal(created.response.status, 201)
+  assert.equal(created.result.listing.isMine, true)
+  const own = await request('/api/skill-exchange/listings?mine=1', { cookie: cookie('PM-SC001') })
+  assert.equal(own.response.status, 200)
+  assert.equal(own.result.listings.some((listing) => listing.id === created.result.listing.id), true)
+  const updated = await request(`/api/skill-exchange/listings/${created.result.listing.id}`, {
+    method: 'PATCH', cookie: cookie('PM-SC001'), body: { active: false },
+  })
+  assert.equal(updated.response.status, 200)
+  assert.equal(updated.result.listing.active, false)
 })
 
 test('students create offers and requests, edit only their own, and close or delete their listings', async () => {

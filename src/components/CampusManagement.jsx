@@ -5,7 +5,7 @@ import { STAFF_DEFAULT_MODULES } from '../auth/access'
 
 const SECTIONS = [
   ['food', 'Food & dining'], ['events', 'Events & clubs'],
-  ['hostel', 'Hostel'], ['directory', 'Campus database'],
+  ['hostel', 'Hostel'],
   ['emergency', 'Emergency contacts'],
 ]
 

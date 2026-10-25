@@ -1,46 +1,49 @@
 import { useEffect, useState } from 'react'
 import {
-  Activity, ArrowRight, Building2, CalendarDays, ChartNoAxesCombined,
-  ChevronRight, ContactRound, Flame, GraduationCap,
-  HeartPulse, Map, MapPin, Megaphone, PackageSearch,
-  Settings2, ShieldAlert, Sparkles, Trophy, UserRound, UsersRound, Utensils,
+  ArrowRight, Building2, CalendarDays, ChartNoAxesCombined,
+  ChevronRight, Flame, GraduationCap, HeartPulse,
+  Map, Megaphone, MessageCircle, MessageSquareWarning, PackageSearch,
+  Settings2, ShieldAlert, Sparkles, Star, Trophy, UserRound, UsersRound, Utensils,
 } from 'lucide-react'
 import { api } from '../api/client'
-import { campusPlaces, navigationGroups, notices } from '../data/campusData'
+import { campusPlaces, navigationGroups } from '../data/campusData'
 import { canSeePage } from '../auth/access'
 
 const day = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
 const quickAccessFeatures = [
-  { id: 'notices', name: 'Notices & Announcements', description: 'Official campus updates', icon: Megaphone, tone: 'gold' },
-  { id: 'events', name: 'Events & Clubs', description: 'Find your campus community', icon: CalendarDays, tone: 'coral' },
-  { id: 'sports', name: 'Sports & Wellness', description: 'Teams, activities and wellbeing', icon: Activity, tone: 'teal' },
-  { id: 'hostel', name: 'Hostel', description: 'Room and residence services', icon: Building2, tone: 'purple' },
-  { id: 'food', name: 'Canteen & College Mess', description: 'Menus and meal information', icon: Utensils, tone: 'coral' },
-  { id: 'canteen', name: 'Canteen Orders', description: 'Manage incoming pre-orders', icon: Utensils, tone: 'gold' },
-  { id: 'complaints', name: 'Complaint & Issue Tracker', description: 'Submit an issue and follow up', icon: MessageSquareWarning, tone: 'blue' },
-  { id: 'lost-found', name: 'Lost & Found', description: 'Search or report an item', icon: PackageSearch, tone: 'teal' },
-  { id: 'campus-voice', name: 'Campus Voice', description: 'Share ideas with campus', icon: Megaphone, tone: 'purple' },
-  { id: 'skill-exchange', name: 'Skill Exchange', description: 'Learn and share a skill', icon: UsersRound, tone: 'gold' },
-  { id: 'teacher-review', name: 'Faculty Reviews', description: 'Share course feedback', icon: GraduationCap, tone: 'blue' },
+  { id: 'notices', name: 'Notices', description: 'Campus updates', icon: Megaphone, tone: 'gold' },
+  { id: 'events', name: 'Events & Clubs', description: 'Events and groups', icon: CalendarDays, tone: 'blue' },
+  { id: 'sports', name: 'Sports', description: 'Teams and wellness', icon: Trophy, tone: 'teal' },
+  { id: 'hostel', name: 'Hostel', description: 'Residence services', icon: Building2, tone: 'blue' },
+  { id: 'food', name: 'Dining & Mess', description: 'Menus and meals', icon: Utensils, tone: 'coral' },
+  { id: 'canteen', name: 'Canteen Orders', description: 'Manage orders', icon: Utensils, tone: 'gold' },
+  { id: 'complaints', name: 'Complaints', description: 'Get campus support', icon: MessageSquareWarning, tone: 'blue' },
+  { id: 'lost-found', name: 'Lost & Found', description: 'Find or report items', icon: PackageSearch, tone: 'teal' },
+  { id: 'campus-voice', name: 'Campus Voice', description: 'Share an idea', icon: MessageCircle, tone: 'purple' },
+  { id: 'skill-exchange', name: 'Skill Exchange', description: 'Share a skill', icon: UsersRound, tone: 'teal' },
+  { id: 'teacher-review', name: 'Faculty Reviews', description: 'Course feedback', icon: Star, tone: 'gold' },
   { id: 'copilot', name: 'Campus AI', description: 'Ask your campus copilot', icon: Sparkles, tone: 'purple' },
-  { id: 'profile', name: 'Profile', description: 'View your account details', icon: UserRound, tone: 'teal' },
-  { id: 'settings', name: 'Settings', description: 'Manage your preferences', icon: Settings2, tone: 'blue' },
-  { id: 'navigation', name: 'Campus Map', description: 'Find places and directions', icon: Map, tone: 'teal' },
-  { id: 'directory', name: 'Campus Directory', description: 'Find people and services', icon: ContactRound, tone: 'blue' },
-  { id: 'emergency', name: 'Emergency', description: 'Reach campus support quickly', icon: ShieldAlert, tone: 'coral' },
-  { id: 'analytics', name: 'Campus Insights', description: 'Review campus operations', icon: ChartNoAxesCombined, tone: 'purple' },
-  { id: 'users', name: 'User Management', description: 'Manage campus accounts', icon: UsersRound, tone: 'blue' },
-  { id: 'campus-management', name: 'Campus Management', description: 'Manage campus services', icon: Settings2, tone: 'gold' },
-  { id: 'sports-management', name: 'Sports Management', description: 'Manage teams and activities', icon: Trophy, tone: 'coral' },
-  { id: 'department-requests', name: 'Student Requests', description: 'Review department requests', icon: UsersRound, tone: 'teal' },
-  { id: 'department-students', name: 'Department Students', description: 'View your student list', icon: GraduationCap, tone: 'purple' },
+  { id: 'profile', name: 'Profile', description: 'Your account', icon: UserRound, tone: 'teal' },
+  { id: 'settings', name: 'Settings', description: 'Your preferences', icon: Settings2, tone: 'blue' },
+  { id: 'navigation', name: 'Campus Map', description: 'Places and directions', icon: Map, tone: 'teal' },
+  { id: 'emergency', name: 'Emergency', description: 'Campus support', icon: ShieldAlert, tone: 'coral' },
+  { id: 'analytics', name: 'Campus Insights', description: 'Campus operations', icon: ChartNoAxesCombined, tone: 'purple' },
+  { id: 'users', name: 'User Management', description: 'Campus accounts', icon: UsersRound, tone: 'blue' },
+  { id: 'campus-management', name: 'Campus Management', description: 'Campus services', icon: Settings2, tone: 'gold' },
+  { id: 'sports-management', name: 'Sports Management', description: 'Teams and activities', icon: Trophy, tone: 'coral' },
+  { id: 'department-requests', name: 'Student Requests', description: 'Department requests', icon: UsersRound, tone: 'teal' },
+  { id: 'department-students', name: 'Department Students', description: 'Student directory', icon: GraduationCap, tone: 'purple' },
 ]
 
-export default function Dashboard({ user, onNavigate, onAction, adminView }) {
+export default function Dashboard({ user, onNavigate, onAction }) {
   const [prompt, setPrompt] = useState('')
   const [weather, setWeather] = useState(null)
   const [weatherStatus, setWeatherStatus] = useState('loading')
   const [weatherRetry, setWeatherRetry] = useState(0)
+  const [campusNotices, setCampusNotices] = useState([])
+  const [upcomingEvents, setUpcomingEvents] = useState([])
+  const [overviewDataError, setOverviewDataError] = useState('')
+  const [overviewDataRetry, setOverviewDataRetry] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -81,6 +84,34 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
     }
   }, [weatherRetry])
 
+  useEffect(() => {
+    let active = true
+    async function loadOverviewData() {
+      const results = await Promise.allSettled([
+        api('/api/notices'),
+        api('/api/events-clubs'),
+      ])
+      if (!active) return
+
+      const errors = []
+      if (results[0].status === 'fulfilled' && Array.isArray(results[0].value.notices)) {
+        setCampusNotices(results[0].value.notices)
+      } else {
+        setCampusNotices([])
+        errors.push(results[0].status === 'rejected' ? results[0].reason.message : 'The notices response was invalid.')
+      }
+      if (results[1].status === 'fulfilled' && Array.isArray(results[1].value.events)) {
+        setUpcomingEvents(results[1].value.events)
+      } else {
+        setUpcomingEvents([])
+        errors.push(results[1].status === 'rejected' ? results[1].reason.message : 'The events response was invalid.')
+      }
+      setOverviewDataError(errors.join(' '))
+    }
+    loadOverviewData()
+    return () => { active = false }
+  }, [overviewDataRetry])
+
   function weatherCondition(code) {
     if (code === 0) return 'Clear'
     if (code === 1) return 'Mostly clear'
@@ -119,38 +150,77 @@ export default function Dashboard({ user, onNavigate, onAction, adminView }) {
     .filter((item) => item.id !== 'overview' && canSeePage(user, item.id))
     .map((item) => item.id))
   const visibleQuickAccess = quickAccessFeatures.filter((feature) => visibleRoutes.has(feature.id))
+  const facultyOverview = ['Staff', 'HOD'].includes(user.role)
+  const today = new Date().toISOString().slice(0, 10)
+  const displayedNotices = [...campusNotices]
+    .sort((left, right) => Number(Boolean(right.important || right.pinned)) - Number(Boolean(left.important || left.pinned))
+      || Date.parse(right.publishAt || right.createdAt) - Date.parse(left.publishAt || left.createdAt))
+    .slice(0, 4)
+  const displayedEvents = upcomingEvents
+    .filter((event) => event.date >= today && !['CANCELLED', 'COMPLETED', 'DRAFT'].includes(event.status))
+    .filter((event) => !facultyOverview || !event.department || sameOverviewDepartment(event.department, user.department))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(0, 3)
 
   return (
-    <div className="dashboard-content page-enter">
+    <div className={`dashboard-content page-enter${facultyOverview ? ' faculty-overview' : ''}${user.role === 'HOD' ? ' hod-overview' : user.role === 'Staff' ? ' staff-overview' : ''}`}>
       <div className="welcome-row">
-        <div><p className="date-line"><span className="date-dot" />{day}<span className="date-divider">·</span><span>Sonipat, Haryana</span><span className="welcome-role">{user.role}</span></p><h1>Welcome, {user.name}.</h1><p className="welcome-description">{adminView ? 'Your operations, people and priorities, all in one place.' : user.role === 'Staff' ? 'Your campus services and assigned student requests, all in sync.' : user.role === 'HOD' ? 'Review department registrations and keep your student list in view.' : user.role === 'Sports Captain' ? 'Teams, wellness and campus sport, ready for the day.' : 'Everything happening at Puran Murti Vidyapeeth, thoughtfully in sync.'}</p></div>
+        <div><p className="date-line"><span className="date-dot" />{day}<span className="date-divider">·</span><span>Sonipat, Haryana</span><span className="welcome-role">{user.role}</span></p><h1>Welcome, {user.name}.</h1>{facultyOverview && user.department && <p className="faculty-department-label">{user.department}</p>}</div>
         <button className="weather-chip" disabled={weatherStatus === 'loading'} onClick={() => weatherStatus === 'ready' ? onAction('Campus weather') : setWeatherRetry((retry) => retry + 1)} aria-label={weatherStatus === 'ready' ? `Sonipat weather: ${weatherDisplay.temperature} Celsius, ${weatherDisplay.condition}. ${weatherDisplay.message}` : `Sonipat weather unavailable. ${weatherDisplay.message}`}><span className="weather-sun"><Flame size={17} /></span><span aria-live="polite"><strong>{weatherDisplay.temperature} <span>°C</span></strong><small>{weatherDisplay.condition}</small></span><span className="weather-divider" /><span><strong>{weatherDisplay.message}</strong><small>Sonipat, Haryana</small></span></button>
       </div>
 
-      <section className="hero-banner" aria-label="Campus welcome">
-        <div className="hero-image" />
-        <div className="hero-shading" />
-        <div className="hero-content"><span className="hero-kicker"><span className="live-pill"><i />CAMPUS IS LIVE</span><span>YOUR DAY, CONNECTED</span></span><h2>A little less searching.<br />A lot more <em>living.</em></h2><p>Your classes, people and places are right where they belong.</p><button className="hero-button" onClick={() => onNavigate('navigation')}>Explore your campus <ArrowRight size={15} /></button></div>
-        <div className="hero-caption"><MapPin size={12} /> PURAN MURTI VIDYAPEETH <span>·</span> SONIPAT</div>
-        <div className="hero-slide"><span /><span /><span /></div>
+      <section className="campus-welcome-hero" aria-labelledby="campus-welcome-title">
+        <div className="campus-welcome-copy">
+          <span className="campus-welcome-label">YOUR DIGITAL CAMPUS</span>
+          <h2 id="campus-welcome-title">Everything you need, in one place.</h2>
+          <p>Stay connected with your campus, discover opportunities and get things done faster.</p>
+        </div>
+        <div className="campus-welcome-art" aria-hidden="true">
+          <span className="campus-network campus-network-one" />
+          <span className="campus-network campus-network-two" />
+          <span className="campus-network campus-network-three" />
+          <span className="campus-network campus-network-four" />
+          <span className="campus-network-line campus-network-line-one" />
+          <span className="campus-network-line campus-network-line-two" />
+          <span className="campus-network-line campus-network-line-three" />
+          <div className="campus-welcome-icon"><Building2 size={31} strokeWidth={1.5} /><Sparkles size={14} /></div>
+        </div>
       </section>
 
       <section className="copilot-panel dashboard-assistant"><div className="copilot-title-row"><span className="copilot-symbol"><Sparkles size={17} /></span><div><span className="section-eyebrow">CAMPUS AI ASSISTANT</span><h3>What can I help you find?</h3></div><span className="copilot-tag">✦ AI</span></div><div className="copilot-prompt"><input aria-label="Ask your campus copilot" placeholder="Ask anything about your campus..." value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && (prompt.trim() ? onAction(prompt) : onNavigate('copilot'))} /><button className="prompt-send" aria-label="Ask copilot" onClick={() => prompt.trim() ? onAction(prompt) : onNavigate('copilot')}><ArrowRight size={16} /></button></div><div className="prompt-suggestions"><button onClick={() => onNavigate('copilot')}>Find my next class <ArrowRight size={11} /></button><button onClick={() => onNavigate('copilot')}>What’s for lunch? <ArrowRight size={11} /></button><button onClick={() => onNavigate('copilot')}>Upcoming deadlines <ArrowRight size={11} /></button></div></section>
 
       <section className="quick-access-section" aria-labelledby="quick-access-heading">
         <div className="quick-access-heading"><div><span className="section-eyebrow">YOUR CAMPUS, ONE TAP AWAY</span><h2 id="quick-access-heading">Quick Access</h2></div></div>
-        <div className="quick-access-grid">{visibleQuickAccess.map(({ id, name, description, icon: Icon, tone }) => <button className={`quick-access-card quick-access-${tone}`} key={id} onClick={() => onNavigate(id)}><span className="quick-access-icon"><Icon size={19} strokeWidth={1.9}/></span><span className="quick-access-copy"><strong>{name}</strong><small>{description}</small></span><ArrowRight className="quick-access-arrow" size={15}/></button>)}</div>
+        <div className="quick-access-grid">{visibleQuickAccess.map(({ id, name, description, icon: Icon, tone }) => <button className={`quick-access-card quick-access-${tone}`} key={id} onClick={() => onNavigate(id)}><span className="quick-access-icon"><Icon size={19} strokeWidth={1.9}/></span><span className="quick-access-copy"><strong>{name}</strong><small>{description}</small></span></button>)}</div>
       </section>
 
-      <section className="section-block notices-section"><div className="section-heading"><div><span className="section-eyebrow">THE THINGS YOU SHOULD KNOW</span><h3>Notice board <span className="unread-count">3 new</span></h3></div><button className="text-link" onClick={() => onNavigate('notices')}>All notices <ArrowRight size={14} /></button></div><div className="notice-list">{notices.slice(0, 2).map((notice) => <article className="notice-item" key={notice.title}><span className={`notice-bullet ${notice.tone}`} /><div className="notice-content"><div className="notice-meta"><span className={`notice-category ${notice.tone}`}>{notice.category}</span><span className="notice-dot-separator">·</span><span>{notice.time}</span>{notice.urgent && <span className="action-pill">ACTION NEEDED</span>}</div><h4>{notice.title}</h4><p>{notice.text}</p><button className="notice-action" onClick={() => onNavigate('notices')}>{notice.action}<ArrowRight size={13} /></button></div></article>)}</div></section>
+      {overviewDataError && <div className="faculty-overview-error" role="alert"><span>Some campus updates could not be loaded: {overviewDataError}</span><button onClick={() => setOverviewDataRetry((retry) => retry + 1)}>Retry</button></div>}
+      {displayedNotices.length > 0 && <section className="section-block notices-section"><div className="section-heading"><div><span className="section-eyebrow">THE THINGS YOU SHOULD KNOW</span><h3>Important notices</h3></div><button className="text-link" onClick={() => onNavigate('notices')}>View all <ArrowRight size={14} /></button></div><div className="notice-list">{displayedNotices.map((notice) => {
+        const tone = notice.important || notice.pinned ? 'notice-amber' : 'notice-blue'
+        const publishedAt = notice.publishAt || notice.createdAt
+        return <article className="notice-item" key={notice.id}><span className={`notice-bullet ${tone}`} /><div className="notice-content"><div className="notice-meta"><span className={`notice-category ${tone}`}>{notice.category}</span><span className="notice-dot-separator">·</span><span>{publishedAt ? formatOverviewDate(publishedAt) : 'Recently'}</span>{notice.important && <span className="action-pill">IMPORTANT</span>}</div><h4>{notice.title}</h4><p>{notice.description}</p><button className="notice-action" onClick={() => onNavigate('notices')}>Read notice <ArrowRight size={13} /></button></div></article>
+      })}</div></section>}
 
-      <div className="dashboard-lower-content">
-        <section className="section-block places-section"><div className="section-heading"><div><span className="section-eyebrow">ALL AROUND YOU</span><h3>Find your place</h3></div><button className="text-link" onClick={() => onNavigate('navigation')}>Open campus map <ArrowRight size={14} /></button></div><div className="place-grid">{campusPlaces.map((place) => <button className="place-card" key={place.name} onClick={() => onNavigate('navigation')}><span className={`place-icon ${place.color}`}><PlaceIcon name={place.icon} /></span><span className="place-text"><strong>{place.name}</strong><span>{place.detail}</span></span><ChevronRight className="place-arrow" size={15} /></button>)}</div></section>
-        {adminView && <div className="admin-summary"><span className="section-eyebrow">OPERATIONS SNAPSHOT</span><strong>Campus services are running smoothly.</strong><span>2 requests need attention · 94% availability <ArrowRight size={12} /></span></div>}
-      </div>
-      <footer className="dashboard-footer"><span><span className="footer-status-dot" />All campus systems operational</span><span>Good to have you here. <span>Campus One · Puran Murti Vidyapeeth</span></span></footer>
+      {displayedEvents.length > 0 && <section className="section-block faculty-events-section"><div className="section-heading"><div><span className="section-eyebrow">{facultyOverview ? `${user.department || 'YOUR'} DEPARTMENT` : 'CAMPUS LIFE'}</span><h3>Upcoming events</h3></div><button className="text-link" onClick={() => onNavigate('events')}>View events <ArrowRight size={14} /></button></div><div className="faculty-event-list">{displayedEvents.map((event) => <article key={event.id}><span className="faculty-event-date">{formatOverviewDate(event.date, true)}</span><div><h4>{event.name}</h4><p>{[event.category, event.venue].filter(Boolean).join(' · ')}</p></div></article>)}</div></section>}
+
+      {!facultyOverview && visibleRoutes.has('navigation') && campusPlaces.length > 0 && <section className="section-block places-section"><div className="section-heading"><div><span className="section-eyebrow">ALL AROUND YOU</span><h3>Find your place</h3></div><button className="text-link" onClick={() => onNavigate('navigation')}>Open campus map <ArrowRight size={14} /></button></div><div className="place-grid">{campusPlaces.map((place) => <button className="place-card" key={place.name} onClick={() => onNavigate('navigation')}><span className={`place-icon ${place.color}`}><PlaceIcon name={place.icon} /></span><span className="place-text"><strong>{place.name}</strong><span>{place.detail}</span></span><ChevronRight className="place-arrow" size={15} /></button>)}</div></section>}
+      <footer className="dashboard-footer"><span><span className="footer-status-dot" />Campus One</span><span>Good to have you here. <span>Campus One · Puran Murti Vidyapeeth</span></span></footer>
     </div>
   )
+}
+
+function formatOverviewDate(value, weekday = false) {
+  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value)
+  if (!Number.isFinite(date.getTime())) return 'Date unavailable'
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', ...(weekday ? { weekday: 'short' } : {}) }).format(date)
+}
+
+function sameOverviewDepartment(left, right) {
+  const normalize = (value) => {
+    const department = String(value || '').trim().toLowerCase()
+    return ({ cse: 'computer science', cs: 'computer science', ece: 'electrical engineering' })[department] || department
+  }
+  return normalize(left) === normalize(right)
 }
 
 function PlaceIcon({ name }) {

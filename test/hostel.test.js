@@ -20,6 +20,7 @@ const fixtures = [
   { id: 'PM-AD001', role: 'Administration', name: 'Campus Admin', department: '' },
   { id: 'PM-S1001', role: 'Student', name: 'First Student', department: 'Computer Science' },
   { id: 'PM-S1002', role: 'Student', name: 'Second Student', department: 'Civil Engineering' },
+  { id: 'PM-SC001', role: 'Sports Captain', name: 'Campus Sports Captain', department: 'Computer Science' },
   { id: 'PM-ST001', role: 'Staff', name: 'Campus Staff', department: 'Computer Science' },
 ]
 
@@ -216,6 +217,7 @@ test('students submit and track their own maintenance; only Administration can m
     method: 'POST',
     body: { category: 'Electrical', description: 'The room light is not working.' },
   })
+
   assert.equal(result.response.status, 201)
   const requestId = result.result.request.id
   assert.equal(result.result.request.status, 'SUBMITTED')
@@ -259,6 +261,22 @@ test('students submit and track their own maintenance; only Administration can m
   assert.equal(data.canteenOrders[0].id, 'preserve-order')
   assert.equal(data.sportsRegistrations[0].id, 'preserve-sports-registration')
   assert.equal(data.campus.food[0].id, 'preserve-food')
+})
+
+test('Sports Captains can use their own student Hostel services, without Administration controls', async () => {
+  const created = await request('/api/hostel/maintenance', {
+    cookie: cookies.get('PM-SC001'),
+    method: 'POST',
+    body: { category: 'Electrical', description: 'The corridor light needs attention.' },
+  })
+  assert.equal(created.response.status, 201)
+  const ownView = await request('/api/hostel', { cookie: cookies.get('PM-SC001') })
+  assert.equal(ownView.response.status, 200)
+  assert.ok(ownView.result.maintenance.some((entry) => entry.id === created.result.request.id))
+  const adminOnly = await request('/api/hostel/maintenance/some-request-id', {
+    cookie: cookies.get('PM-SC001'), method: 'PATCH', body: { status: 'RESOLVED' },
+  })
+  assert.equal(adminOnly.response.status, 403)
 })
 
 test('students create and edit one Hostel details record; Administration can view and manage submissions', async () => {
