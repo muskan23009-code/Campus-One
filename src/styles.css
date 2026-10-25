@@ -1494,6 +1494,13 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .canteen-page { padding-bottom: 25px; }
 .canteen-hero { align-items: center; }
 .canteen-signout { min-height: 33px; padding: 0 11px; color: #61775c; font-size: 9px; background: #fff; border: 1px solid #e6ebe2; border-radius: 2px; cursor: pointer; }
+.canteen-browse-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(235px,290px); grid-template-areas: "filters cart" "menu cart"; align-items: start; gap: 0 15px; }
+.canteen-browse-layout > .canteen-filters { grid-area: filters; }
+.canteen-browse-layout > .canteen-food-grid, .canteen-browse-layout > .canteen-menu-state { grid-area: menu; }
+.canteen-browse-layout > .canteen-cart { position: sticky; top: 14px; grid-area: cart; max-height: calc(100vh - 28px); overflow-y: auto; margin: 0; }
+.canteen-cart .canteen-section-heading h2 > span { display: inline-block; width: auto; height: auto; padding: 4px 7px; font-size: 8px; vertical-align: 2px; border-radius: 12px; }
+.canteen-cart-lines { max-height: 280px; overflow-y: auto; }
+.canteen-place-order { width: 100%; justify-content: center; margin-top: 11px; }
 .canteen-tabs { display: flex; gap: 6px; margin: 4px 0 15px; border-bottom: 1px solid #e8ebe5; }
 .canteen-tabs > button { display: flex; min-height: 37px; align-items: center; gap: 6px; padding: 0 10px; color: #7d887b; font-size: 9px; background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
 .canteen-tabs > button.canteen-tab-active { color: #456849; border-bottom-color: #6c8a65; }
@@ -1593,6 +1600,10 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .canteen-staff-shell { min-height: 100vh; background: var(--canvas); }
 @media (max-width: 980px) { .canteen-food-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 780px) {
+  .canteen-browse-layout { grid-template-columns: minmax(0,1fr); grid-template-areas: "filters" "cart" "menu"; gap: 0; }
+  .canteen-cart { top: 6px; z-index: 2; padding: 10px; }
+  .canteen-cart-lines { max-height: 68px; }
+  .canteen-cart-line { padding-block: 6px; }
   .lost-found-detail-grid { grid-template-columns: 1fr; }
   .lost-found-stat-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
@@ -3647,6 +3658,8 @@ h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 .settings-card-heading h2 { margin: 0; color: #233b58; font-family: var(--serif); font-size: 15px; }
 .settings-card-heading p { margin: 4px 0 0; color: #8793a4; font-size: 9px; line-height: 1.5; }
 .settings-theme-options { display: grid; gap: 7px; }
+.density-setting { margin-top: 16px; padding-top: 15px; border-top: 1px solid #e8edf2; }
+.settings-about-card { grid-column: 1 / -1; }
 .settings-theme-option { position: relative; display: flex; width: 100%; min-width: 0; min-height: 57px; align-items: center; gap: 10px; padding: 8px 10px; text-align: left; background: #fbfcfe; border: 1px solid #e9eef4; border-radius: 7px; cursor: pointer; }
 .settings-theme-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .settings-theme-option:has(input:focus-visible) { outline: 2px solid #378362; outline-offset: 2px; }
@@ -3855,6 +3868,7 @@ html[data-campus-theme="dark"] .settings-storage-notice { color: #f0d99f; backgr
   .settings-page-heading { margin-bottom: 16px; }
   .settings-page-heading p { font-size: 10px; }
   .settings-card { padding: 14px; }
+  .density-compact .settings-card { padding: 14px; }
   .settings-action-row { align-items: flex-start; flex-direction: column; gap: 9px; }
   .settings-action-button, .settings-signout-button { width: 100%; min-height: 42px; }
   .settings-save-login-row { align-items: flex-start; }
@@ -3863,6 +3877,7 @@ html[data-campus-theme="dark"] .settings-storage-notice { color: #f0d99f; backgr
 @media (max-width: 359px) {
   .settings-page { padding-inline: 9px; }
   .settings-card { padding: 12px; }
+  .density-compact .settings-card { padding: 12px; }
   .settings-theme-option { gap: 8px; padding-inline: 8px; }
   .settings-card-heading { gap: 9px; }
   .settings-card-heading h2 { font-size: 14px; }

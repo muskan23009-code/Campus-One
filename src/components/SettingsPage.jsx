@@ -1,9 +1,10 @@
 import {
-  BellRing, Check, Laptop, LoaderCircle, LogOut, Moon, Palette, ShieldCheck,
-  Sun, UserRound, Waves,
+  BellRing, Building2, Check, Laptop, Layers3, LoaderCircle, LogOut, Moon,
+  PanelsTopLeft, Palette, ShieldCheck, Sun, UserRound, UsersRound, Waves,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import packageJson from '../../package.json'
 
 const themeOptions = [
   { id: 'system', label: 'System Default', description: 'Follow your device appearance', Icon: Laptop },
@@ -74,6 +75,21 @@ export default function SettingsPage({ preferences, storageAvailable, onUpdatePr
             <span className="settings-theme-check" aria-hidden="true">{preferences.theme === id && <Check size={13}/>}</span>
           </label>)}
         </div>
+        <fieldset className="density-setting">
+          <legend>Layout Density</legend>
+          <div className="density-options" role="radiogroup" aria-label="Layout density">
+            {[
+              { value: 'comfortable', label: 'Comfortable', description: 'Normal spacing, larger cards and easier reading.' },
+              { value: 'compact', label: 'Compact', description: 'Reduced spacing and more information visible on screen.' },
+            ].map((option) => <label
+              key={option.value}
+              className={`density-option${preferences.layoutDensity === option.value ? ' density-option-selected' : ''}`}
+            >
+              <span className="density-option-top"><strong>{option.label}</strong><span className="density-radio" aria-hidden="true"><input type="radio" name="layout-density" value={option.value} checked={preferences.layoutDensity === option.value} onChange={() => updatePreference('layoutDensity', option.value)}/></span></span>
+              <span className="density-option-description">{option.description}</span>
+            </label>)}
+          </div>
+        </fieldset>
       </section>
 
       <section className="settings-card settings-notifications-card">
@@ -151,6 +167,22 @@ export default function SettingsPage({ preferences, storageAvailable, onUpdatePr
             <div className="settings-action-copy"><strong>Sign Out</strong><small>End your current Campus One session</small></div>
             <button type="button" className="settings-signout-button" onClick={onLogout}><LogOut size={15}/>Sign Out</button>
           </div>
+        </div>
+      </section>
+
+      <section className="settings-card settings-about-card" aria-labelledby="about-campus-one-title">
+        <div className="about-brand-block">
+          <span className="about-brand-icon"><PanelsTopLeft size={22}/></span>
+          <div>
+            <span className="about-kicker">SMART CAMPUS MANAGEMENT PLATFORM</span>
+            <h2 id="about-campus-one-title">Campus One</h2>
+          </div>
+        </div>
+        <p className="about-description">A unified digital campus platform connecting students, faculty, campus services, activities and communication in one place.</p>
+        <div className="about-details">
+          <div className="about-detail"><span className="about-detail-icon about-icon-teal"><Building2 size={15}/></span><span><small>INSTITUTION</small><strong>Puran Murti Vidyapeeth</strong></span></div>
+          <div className="about-detail"><span className="about-detail-icon about-icon-purple"><UsersRound size={15}/></span><span><small>TEAM</small><strong>THE SUQADNEX</strong></span></div>
+          <div className="about-detail"><span className="about-detail-icon about-icon-gold"><Layers3 size={15}/></span><span><small>APPLICATION VERSION</small><strong>v{packageJson.version}</strong></span></div>
         </div>
       </section>
     </div>

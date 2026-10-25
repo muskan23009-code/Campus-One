@@ -53,6 +53,7 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
     && (category === 'All' || item.category === category)
     && (!search || `${item.name} ${item.category} ${item.description}`.toLowerCase().includes(search.toLowerCase()))), [items, diet, category, search])
   const cartLines = Object.values(cart)
+  const itemCount = cartLines.reduce((sum, line) => sum + line.quantity, 0)
   const total = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0)
   const visibleOrders = manager
     ? orders.filter((order) => statusFilter === 'ALL' || order.status === statusFilter)
@@ -134,26 +135,28 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
       <button className={tab === 'orders' ? 'canteen-tab-active' : ''} onClick={() => setTab('orders')}><ShoppingBag size={14}/>My Orders{orders.length > 0 && <span>{orders.length}</span>}</button>
     </div>}
     {!manager && tab === 'menu' && <>
+      <div className="canteen-browse-layout">
       <div className="canteen-filters">
         <label className="module-search canteen-search"><Search size={15}/><input aria-label="Search food" placeholder="Search the menu…" value={search} onChange={(event) => setSearch(event.target.value)}/></label>
         <div className="canteen-diet-filters" aria-label="Filter by menu type">{['All', 'Veg', 'Non-Veg'].map((value) => <button key={value} className={diet === value ? 'canteen-filter-active' : ''} onClick={() => { setDiet(value); setCategory('All') }}>{value}</button>)}</div>
         <select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="All">All categories</option>{categories.filter((value) => value !== 'All').map((value, index) => <option key={`${value}-${index}`} value={value}>{value}</option>)}</select>
         {manager && <button className="module-primary" onClick={() => editItem()}><Plus size={14}/> Add food item</button>}
       </div>
-      {loading ? <div className="management-state"><span className="loading-spinner"/>Loading canteen menu…</div> : visibleItems.length === 0 ? <div className="management-state">{manager ? 'No menu items match your filters.' : 'No available items match your search.'}</div> : <div className="canteen-food-grid">{visibleItems.map((item) => <article className={`canteen-food-card ${!item.available ? 'canteen-unavailable' : ''}`} key={item.id}>
+      {!manager && <section className="canteen-cart" aria-label="Current order">
+        <div className="canteen-section-heading"><div><span className="section-eyebrow">YOUR PRE-ORDER</span><h2>Your order <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span></h2></div><strong className="canteen-cart-total">Order total <b>₹{total}</b></strong></div>
+        {!cartLines.length ? <p className="canteen-empty-cart">Your order is empty. Add something delicious from the menu.</p> : <>
+          <div className="canteen-cart-lines" aria-live="polite">{cartLines.map((line) => <div className="canteen-cart-line" key={line.id}><span><strong>{line.name}{line.size && ` · ${line.size}`}</strong><small>₹{line.price} each · ₹{line.price * line.quantity}</small></span><div className="canteen-quantity"><button aria-label={`Decrease ${line.name}${line.size ? ` · ${line.size}` : ''}`} onClick={() => changeQuantity(line.id, -1)}><Minus size={13}/></button><strong>{line.quantity}</strong><button aria-label={`Increase ${line.name}${line.size ? ` · ${line.size}` : ''}`} onClick={() => changeQuantity(line.id, 1)}><Plus size={13}/></button></div><button className="canteen-remove" aria-label={`Remove ${line.name}${line.size ? ` · ${line.size}` : ''}`} onClick={() => setCart((current) => { const next = { ...current }; delete next[line.id]; return next })}><X size={14}/></button></div>)}</div>
+          <button className="module-primary canteen-place-order" disabled={busy === 'place-order'} onClick={placeOrder}>{busy === 'place-order' ? 'Placing order…' : 'Place Pre-Order'} <Check size={14}/></button>
+        </>}
+      </section>}
+      {loading ? <div className="management-state canteen-menu-state"><span className="loading-spinner"/>Loading canteen menu…</div> : visibleItems.length === 0 ? <div className="management-state canteen-menu-state">{manager ? 'No menu items match your filters.' : 'No available items match your search.'}</div> : <div className="canteen-food-grid">{visibleItems.map((item) => <article className={`canteen-food-card ${!item.available ? 'canteen-unavailable' : ''}`} key={item.id}>
         {item.imageUrl ? <img className="canteen-food-image" src={item.imageUrl} alt="" loading="lazy"/> : <div className="canteen-food-image canteen-food-placeholder"><Utensils size={23}/></div>}
         <div className="canteen-food-card-body"><div className="canteen-card-tags"><span className={`canteen-diet-tag ${item.diet === 'Veg' ? 'diet-veg' : 'diet-nonveg'}`}><i/>{item.diet}</span><span className={item.available ? 'canteen-available-tag' : 'canteen-unavailable-tag'}>{item.available ? 'Available' : 'Unavailable'}</span></div>
           <h3>{item.name}{item.size && <small> · {item.size}</small>}</h3><span className="canteen-food-category">{item.category}</span>{item.description && <p>{item.description}</p>}
-          <div className="canteen-food-card-footer"><strong>₹{item.price}</strong>{manager ? <button className="canteen-edit-button" onClick={() => editItem(item)}>Edit item</button> : <button className="module-primary" disabled={!item.available} onClick={() => addItem(item)}><Plus size={14}/> Add</button>}</div>
+          <div className="canteen-food-card-footer"><strong>₹{item.price}</strong>{manager ? <button className="canteen-edit-button" onClick={() => editItem(item)}>Edit item</button> : cart[item.id]?.quantity ? <div className="canteen-quantity"><button aria-label={`Decrease ${item.name}${item.size ? ` · ${item.size}` : ''}`} onClick={() => changeQuantity(item.id, -1)}><Minus size={13}/></button><strong>{cart[item.id].quantity}</strong><button aria-label={`Increase ${item.name}${item.size ? ` · ${item.size}` : ''}`} onClick={() => changeQuantity(item.id, 1)}><Plus size={13}/></button></div> : <button className="module-primary" disabled={!item.available} onClick={() => addItem(item)}><Plus size={14}/> Add</button>}</div>
         </div>
       </article>)}</div>}
-      {!manager && <section className="canteen-cart">
-        <div className="canteen-section-heading"><div><span className="section-eyebrow">YOUR PRE-ORDER</span><h2>Cart <span>{cartLines.reduce((sum, line) => sum + line.quantity, 0)}</span></h2></div><strong className="canteen-cart-total">Total <b>₹{total}</b></strong></div>
-        {!cartLines.length ? <p className="canteen-empty-cart">Your cart is empty. Add something delicious from the menu.</p> : <>
-          <div className="canteen-cart-lines">{cartLines.map((line) => <div className="canteen-cart-line" key={line.id}><span><strong>{line.name}{line.size && ` · ${line.size}`}</strong><small>₹{line.price} each · ₹{line.price * line.quantity}</small></span><div className="canteen-quantity"><button aria-label={`Decrease ${line.name}`} onClick={() => changeQuantity(line.id, -1)}><Minus size={13}/></button><strong>{line.quantity}</strong><button aria-label={`Increase ${line.name}`} onClick={() => changeQuantity(line.id, 1)}><Plus size={13}/></button></div><button className="canteen-remove" aria-label={`Remove ${line.name}`} onClick={() => setCart((current) => { const next = { ...current }; delete next[line.id]; return next })}><X size={14}/></button></div>)}</div>
-          <div className="canteen-order-summary"><strong>Order summary</strong>{cartLines.map((line) => <span key={line.id}>{line.name}{line.size && ` · ${line.size}`} × {line.quantity}<b>₹{line.price * line.quantity}</b></span>)}<span className="canteen-summary-total">Order total<b>₹{total}</b></span><button className="module-primary" disabled={busy === 'place-order'} onClick={placeOrder}>{busy === 'place-order' ? 'Placing order…' : 'Place Pre-Order'} <Check size={14}/></button></div>
-        </>}
-      </section>}
+      </div>
     </>}
     {tab === 'orders' && <section className="canteen-orders-section">
       <div className="canteen-section-heading"><div><span className="section-eyebrow">{manager ? 'LIVE QUEUE · COMPLETED · REJECTED' : 'ORDER TRACKING'}</span><h2>{manager ? 'Incoming orders & history' : 'My Orders'}</h2></div>{manager && <select aria-label="Filter order status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="ALL">All orders</option>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select>}</div>
