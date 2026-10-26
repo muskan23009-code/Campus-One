@@ -81,7 +81,7 @@ export const moduleDetails = {
     icon: 'Sparkles',
     accent: 'mint',
     stats: [],
-    suggestions: ['Explore campus services', 'Browse events and clubs', 'Open campus support'],
+    suggestions: ['Show latest notices', 'What events are coming up?', "What's available in the canteen?", 'How do I access Hostel?', 'How does Faculty Review work?', 'What can I do in Campus One?'],
     rows: [
       ['Campus services', 'Browse available campus services.', 'Explore services'],
       ['Campus life', 'Find activities and campus support.', 'Explore campus'],
@@ -168,8 +168,8 @@ export const moduleDetails = {
     title: 'Campus insights',
     description: 'A clear operational picture for campus teams, with the context behind every number.',
     icon: 'ChartNoAxesCombined', accent: 'blue',
-    stats: [['2,418', 'Students on campus'], ['94%', 'Campus services availability'], ['−18%', 'Dining peak wait this month']],
-    rows: [['Campus engagement', 'Events, facilities, programs · Updated today', 'View dashboard'], ['Dining & occupancy', 'Meal service demand, wait times, campus capacity', 'Explore insights'], ['Student wellbeing', 'Service usage and resolution trends · Aggregated', 'Review patterns'], ['Operations overview', 'Facilities, campus services and open service requests', 'Open report']],
+    stats: [],
+    rows: [],
   },
 }
 

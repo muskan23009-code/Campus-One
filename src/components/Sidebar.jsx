@@ -26,7 +26,7 @@ export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose, u
         </div>
 
         <button className="campus-select" onClick={() => setCampusOpen(!campusOpen)} aria-expanded={campusOpen}>
-          <span className="institution-mark">P</span>
+          <img className="institution-mark" src="/puran-murti-vidyapeth-logo-png.jpeg" alt="Puran Murti Vidyapeeth logo" />
           <span className="campus-info"><strong>Puran Murti Vidyapeeth</strong><small>Sonipat, Haryana</small></span>
           <ChevronDown size={15} className={`campus-chevron ${campusOpen ? 'rotate' : ''}`} />
         </button>

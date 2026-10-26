@@ -35,7 +35,7 @@ const quickAccessFeatures = [
   { id: 'department-students', name: 'Department Students', description: 'Student directory', icon: GraduationCap, tone: 'purple' },
 ]
 
-export default function Dashboard({ user, onNavigate, onAction }) {
+export default function Dashboard({ user, onNavigate, onAction, onAskCopilot = onNavigate }) {
   const [prompt, setPrompt] = useState('')
   const [weather, setWeather] = useState(null)
   const [weatherStatus, setWeatherStatus] = useState('loading')
@@ -187,7 +187,7 @@ export default function Dashboard({ user, onNavigate, onAction }) {
         </div>
       </section>
 
-      <section className="copilot-panel dashboard-assistant"><div className="copilot-title-row"><span className="copilot-symbol"><Sparkles size={17} /></span><div><span className="section-eyebrow">CAMPUS AI ASSISTANT</span><h3>What can I help you find?</h3></div><span className="copilot-tag">✦ AI</span></div><div className="copilot-prompt"><input aria-label="Ask your campus copilot" placeholder="Ask anything about your campus..." value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && (prompt.trim() ? onAction(prompt) : onNavigate('copilot'))} /><button className="prompt-send" aria-label="Ask copilot" onClick={() => prompt.trim() ? onAction(prompt) : onNavigate('copilot')}><ArrowRight size={16} /></button></div><div className="prompt-suggestions"><button onClick={() => onNavigate('copilot')}>Find my next class <ArrowRight size={11} /></button><button onClick={() => onNavigate('copilot')}>What’s for lunch? <ArrowRight size={11} /></button><button onClick={() => onNavigate('copilot')}>Upcoming deadlines <ArrowRight size={11} /></button></div></section>
+      <section className="copilot-panel dashboard-assistant"><div className="copilot-title-row"><span className="copilot-symbol"><Sparkles size={17} /></span><div><span className="section-eyebrow">CAMPUS AI ASSISTANT</span><h3>What can I help you find?</h3></div><span className="copilot-tag">✦ AI</span></div><div className="copilot-prompt"><input aria-label="Ask your campus copilot" placeholder="Ask anything about your campus..." value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && (event.preventDefault(), onAskCopilot(prompt.trim()))} /><button className="prompt-send" aria-label="Ask copilot" onClick={() => onAskCopilot(prompt.trim())}><ArrowRight size={16} /></button></div><div className="prompt-suggestions"><button onClick={() => onAskCopilot('Show latest notices')}>Show latest notices <ArrowRight size={11} /></button><button onClick={() => onAskCopilot('What events are coming up?')}>Upcoming events <ArrowRight size={11} /></button><button onClick={() => onAskCopilot("What's available in the canteen?")}>Canteen menu <ArrowRight size={11} /></button></div></section>
 
       <section className="quick-access-section" aria-labelledby="quick-access-heading">
         <div className="quick-access-heading"><div><span className="section-eyebrow">YOUR CAMPUS, ONE TAP AWAY</span><h2 id="quick-access-heading">Quick Access</h2></div></div>

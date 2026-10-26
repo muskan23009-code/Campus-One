@@ -799,6 +799,12 @@ export function createCampusApp({ store, sessionSecret, staticDirectory, viteMid
       || (pathname === '/api/auth/logout' && request.method === 'POST')
     )) return reject(response, 403, 'Change your temporary password before continuing.')
 
+    if (pathname === '/api/analytics/dashboard' && request.method === 'GET') {
+      if (user.role !== ROLES.ADMIN) return reject(response, 403, 'Administration access is required.')
+      const data = await store.read()
+      return json(response, 200, { insights: buildCampusInsights(data) })
+    }
+
     if (pathname.startsWith('/api/teacher-reviews')) {
       if (![ROLES.STUDENT, ROLES.SPORTS, ROLES.STAFF, ROLES.HOD, ROLES.ADMIN].includes(user.role)) return reject(response, 403, 'Your role cannot access Teacher Review.')
       const month = searchParams.get('month') || currentReviewMonth()
@@ -3659,6 +3665,206 @@ function makeReviewStatistics(summaries, reviews) {
     publishedReviews: published.length,
     averageRating: published.length ? roundRating(totalRating / published.length) : 0,
     ratingDistribution: Object.fromEntries([1, 2, 3, 4, 5].map((rating) => [rating, published.filter((review) => review.rating === rating).length])),
+  }
+}
+
+function buildCampusInsights(data) {
+  const now = Date.now()
+  const today = new Date().toISOString().slice(0, 10)
+  const records = (key) => Array.isArray(data[key]) ? data[key] : null
+  const countBy = (items, getKey) => items.reduce((counts, item) => {
+    const key = getKey(item)
+    if (key) counts[key] = (counts[key] || 0) + 1
+    return counts
+  }, {})
+  const activity = []
+  const addActivity = (items, getTitle, getDate) => {
+    for (const item of items || []) {
+      const timestamp = getDate(item)
+      if (!timestamp || !Number.isFinite(Date.parse(timestamp))) continue
+      const entry = { title: getTitle(item), timestamp }
+      if (activity.length < 12) activity.push(entry)
+      else {
+        const oldestIndex = activity.reduce((oldest, candidate, index, entries) =>
+          Date.parse(candidate.timestamp) < Date.parse(entries[oldest].timestamp) ? index : oldest, 0)
+        if (Date.parse(timestamp) > Date.parse(activity[oldestIndex].timestamp)) activity[oldestIndex] = entry
+      }
+    }
+  }
+  const users = records('users')
+  const students = users?.filter((entry) => entry.role === ROLES.STUDENT) || []
+  const staff = users?.filter((entry) => entry.role === ROLES.STAFF) || []
+  const hods = users?.filter((entry) => entry.role === ROLES.HOD) || []
+  const administrators = users?.filter((entry) => entry.role === ROLES.ADMIN) || []
+  const events = records('campusEvents')
+  const clubs = records('campusClubs')
+  const registrations = records('eventRegistrations')
+  const sports = records('sports')
+  const sportsEvents = records('sportsEvents')
+  const sportsTeams = records('sportsTeams')
+  const sportsRegistrations = records('sportsRegistrations')
+  const rooms = records('hostelRooms')
+  const allotments = records('hostelAllotments')
+  const hostelDetails = records('hostelDetails')
+  const maintenance = records('hostelMaintenance')
+  const menu = records('canteenMenu')
+  const orders = records('canteenOrders')
+  const notices = Array.isArray(data.campus?.notices) ? data.campus.notices : null
+  const complaints = records('complaints')
+  const lostFound = records('lostFoundReports')
+  const voice = records('campusVoiceSubmissions')
+  const skillListings = records('skillExchangeListings')
+  const skillConnections = records('skillExchangeConnections')
+  const reviews = records('teacherReviews')
+  const messSettings = data.messSettings && typeof data.messSettings === 'object' ? data.messSettings : null
+
+  const upcomingEvents = events?.filter((event) =>
+    event.date >= today && !['DRAFT', 'CANCELLED', 'COMPLETED'].includes(event.status)) || []
+  const visibleNotices = notices?.slice() || null
+  if (visibleNotices && Array.isArray(data.messNotices)) {
+    const existingNoticeIds = new Set(visibleNotices.map((notice) => notice.id))
+    for (const notice of data.messNotices) {
+      const legacyId = notice.id ? `mess-legacy-${notice.id}` : ''
+      if (!notice.active || !legacyId || existingNoticeIds.has(legacyId)) continue
+      visibleNotices.push({
+        id: legacyId,
+        title: notice.title,
+        category: 'Canteen',
+        priority: 'Normal',
+        target: { type: 'ROLE' },
+        active: true,
+        publishAt: notice.createdAt,
+        createdAt: notice.createdAt,
+      })
+      existingNoticeIds.add(legacyId)
+    }
+  }
+  const publishedNotices = visibleNotices?.filter((notice) =>
+    notice.active !== false
+    && Date.parse(notice.publishAt || notice.createdAt || '') <= now
+    && (!notice.expiresAt || Date.parse(notice.expiresAt) >= now)) || []
+  const usersById = new Map((users || []).map((entry) => [entry.id, entry]))
+  const activeListings = skillListings?.filter((listing) => {
+    const owner = usersById.get(listing.ownerId)
+    return listing.active && owner?.active && [ROLES.STUDENT, ROLES.SPORTS].includes(owner.role)
+  }) || []
+  const publishedReviews = reviews?.filter((review) => review.status !== 'HIDDEN') || []
+  const validRatings = publishedReviews.filter((review) => Number.isFinite(Number(review.rating)) && Number(review.rating) >= 1 && Number(review.rating) <= 5)
+
+  addActivity(publishedNotices, (notice) => `Notice published: ${notice.title || 'Campus notice'}`, (notice) => notice.publishAt || notice.createdAt)
+  addActivity(events?.filter((event) => event.status !== 'DRAFT') || [], (event) => `Event: ${event.name || 'Campus event'}`, (event) => event.updatedAt || event.createdAt)
+  addActivity(clubs?.filter((club) => club.active) || [], (club) => `Club: ${club.name || 'Campus club'}`, (club) => club.updatedAt || club.createdAt)
+  addActivity(sportsEvents, () => 'Sports activity updated', (event) => event.updatedAt || event.createdAt)
+  addActivity(voice, () => 'Campus Voice submission updated', (entry) => entry.updatedAt || entry.createdAt)
+  addActivity(activeListings, () => 'Skill Exchange listing updated', (listing) => listing.updatedAt || listing.createdAt)
+  addActivity(complaints, () => 'Campus support request updated', (entry) =>
+    entry.activity?.at(-1)?.createdAt || entry.updatedAt || entry.createdAt)
+  addActivity(maintenance, () => 'Hostel maintenance request updated', (entry) => entry.updatedAt || entry.createdAt)
+  addActivity(lostFound, () => 'Lost & Found report updated', (entry) =>
+    entry.activity?.at(-1)?.createdAt || entry.updatedAt || entry.createdAt)
+  addActivity(orders, () => 'Canteen order updated', (entry) => entry.updatedAt || entry.createdAt)
+
+  const hostels = rooms || allotments || hostelDetails || maintenance ? {
+    rooms: rooms?.length ?? null,
+    hostelBlocks: rooms ? Object.entries(countBy(rooms, (room) => room.block || room.hostelName)).map(([name, count]) => ({ name, count })) : null,
+    roomTypes: hostelDetails ? Object.entries(countBy(hostelDetails, (entry) => entry.roomType)).map(([name, count]) => ({ name, count })) : null,
+    allotted: allotments?.filter((entry) => entry.status === 'ALLOTTED').length ?? null,
+    maintenance: maintenance ? countBy(maintenance, (entry) => entry.status) : null,
+    maintenanceTotal: maintenance?.length ?? null,
+    occupancy: rooms && allotments && rooms.every((room) => room.capacity !== null && room.capacity !== '' && Number.isFinite(Number(room.capacity)))
+      ? (() => {
+          const occupiedByRoom = new Map()
+          for (const entry of allotments) {
+            if (entry.status === 'ALLOTTED') occupiedByRoom.set(entry.roomId, (occupiedByRoom.get(entry.roomId) || 0) + 1)
+          }
+          return rooms.reduce((summary, room) => {
+            summary.capacity += Number(room.capacity)
+            summary.occupied += occupiedByRoom.get(room.id) || 0
+            return summary
+          }, { capacity: 0, occupied: 0 })
+        })()
+      : null,
+  } : null
+
+  return {
+    overview: users ? {
+      totalUsers: users.length,
+      activeUsers: users.filter((entry) => entry.active).length,
+      students: students.length,
+      staff: staff.length,
+      hods: hods.length,
+      administrators: administrators.length,
+    } : null,
+    events: events || clubs ? {
+      totalEvents: events?.length ?? null,
+      upcomingEvents: events ? upcomingEvents.length : null,
+      pastEvents: events ? events.filter((event) => event.date < today || ['CANCELLED', 'COMPLETED'].includes(event.status)).length : null,
+      activeClubs: clubs?.filter((club) => club.active).length ?? null,
+      eventCategories: events ? Object.entries(countBy(events, (event) => event.category)).map(([name, count]) => ({ name, count })) : null,
+      upcoming: upcomingEvents.slice().sort((left, right) => String(left.date).localeCompare(String(right.date))).slice(0, 5)
+        .map(({ name, date, startTime, venue }) => ({ name, date, startTime: startTime || '', venue: venue || '' })),
+      registrations: registrations?.filter((entry) => entry.status !== 'CANCELLED').length ?? null,
+    } : null,
+    sports: sports || sportsEvents || sportsTeams || sportsRegistrations ? {
+      activities: sports?.filter((entry) => entry.active !== false).length ?? null,
+      events: sportsEvents?.length ?? null,
+      upcomingEvents: sportsEvents?.filter((event) => sportsEventStartsAt(event) >= now && isPublicSportsEvent(event)).length ?? null,
+      teams: sportsTeams?.filter((team) => team.status === 'ACTIVE').length ?? null,
+      registrations: sportsRegistrations?.length ?? null,
+      categories: sports ? Object.entries(countBy(sports.filter((entry) => entry.active !== false), (entry) => entry.kind || entry.category)).map(([name, count]) => ({ name, count })) : null,
+    } : null,
+    hostel: hostels,
+    canteen: menu || orders || messSettings ? {
+      totalItems: menu?.length ?? null,
+      availableItems: menu?.filter((item) => item.available !== false).length ?? null,
+      vegetarian: menu?.filter((item) => item.available !== false && item.diet === 'VEG').length ?? null,
+      nonVegetarian: menu?.filter((item) => item.available !== false && item.diet === 'NON_VEG').length ?? null,
+      categories: menu ? Object.entries(countBy(menu.filter((item) => item.available !== false), (item) => item.category)).map(([name, count]) => ({ name, count })) : null,
+      orders: orders?.length ?? null,
+      messTimings: messSettings?.timings || null,
+    } : null,
+    notices: visibleNotices ? {
+      total: publishedNotices.length,
+      important: publishedNotices.filter((notice) => notice.important || notice.priority === 'Important' || notice.priority === 'Urgent').length,
+      categories: Object.entries(countBy(publishedNotices, (notice) => notice.category)).map(([name, count]) => ({ name, count })),
+      audiences: Object.entries(countBy(publishedNotices, (notice) => notice.target?.type)).map(([name, count]) => ({ name, count })),
+      recent: publishedNotices.slice().sort((left, right) => String(right.publishAt || right.createdAt).localeCompare(String(left.publishAt || left.createdAt))).slice(0, 5)
+        .map(({ title, category, priority, publishAt, createdAt }) => ({ title, category, priority, timestamp: publishAt || createdAt })),
+    } : null,
+    complaints: complaints ? {
+      total: complaints.length,
+      statuses: Object.entries(countBy(complaints, (entry) => entry.status)).map(([name, count]) => ({ name, count })),
+      categories: Object.entries(countBy(complaints, (entry) => entry.category)).map(([name, count]) => ({ name, count })),
+    } : null,
+    lostFound: lostFound ? {
+      total: lostFound.length,
+      types: Object.entries(countBy(lostFound, (entry) => entry.type)).map(([name, count]) => ({ name, count })),
+      statuses: Object.entries(countBy(lostFound, (entry) => entry.status)).map(([name, count]) => ({ name, count })),
+    } : null,
+    campusVoice: voice ? {
+      total: voice.length,
+      types: Object.entries(countBy(voice, (entry) => entry.type)).map(([name, count]) => ({ name, count })),
+      statuses: Object.entries(countBy(voice, (entry) => entry.status)).map(([name, count]) => ({ name, count })),
+    } : null,
+    skillExchange: skillListings ? {
+      activeListings: activeListings.length,
+      offers: activeListings.filter((entry) => entry.kind === 'OFFER').length,
+      requests: activeListings.filter((entry) => entry.kind === 'REQUEST').length,
+      categories: Object.entries(countBy(activeListings, (entry) => entry.category)).map(([name, count]) => ({ name, count })),
+      connections: skillConnections ? countBy(skillConnections, (entry) => entry.status) : null,
+    } : null,
+    facultyReviews: reviews ? {
+      publishedReviews: publishedReviews.length,
+      reviewedFaculty: new Set(publishedReviews.map((review) => review.facultyId).filter(Boolean)).size,
+      averageRating: validRatings.length >= REVIEW_RANKING_MINIMUM
+        ? Math.round(validRatings.reduce((sum, review) => sum + Number(review.rating), 0) / validRatings.length * 10) / 10
+        : null,
+      ratingDistribution: validRatings.length >= REVIEW_RANKING_MINIMUM
+        ? Object.fromEntries([1, 2, 3, 4, 5].map((rating) => [rating, validRatings.filter((review) => Number(review.rating) === rating).length]))
+        : null,
+      monthlyActivity: Object.entries(countBy(validRatings, (review) => review.month)).map(([month, count]) => ({ month, count })).sort((left, right) => left.month.localeCompare(right.month)),
+    } : null,
+    recentActivity: activity.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp)),
   }
 }
 

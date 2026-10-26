@@ -18,7 +18,7 @@ const ROLE_DESCRIPTIONS = {
 const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say']
 
 export function RoleChooser({ onChoose }) {
-  return <AuthLayout story="A campus that feels like yours." storyLine="Your community, services and campus life. Just where you need them.">
+  return <AuthLayout campusExperience story="A campus that feels like yours." storyLine="Your community, services and campus life. Just where you need them.">
     <span className="login-welcome-label">CAMPUS ONE · PURAN MURTI VIDYAPEETH</span>
     <h2>Welcome Back</h2>
     <p className="login-description">Sign in to your digital campus.</p>
@@ -43,7 +43,7 @@ export function RoleLoginView({ role, onBack, onRegister, onSubmit, busy, error 
     await onSubmit({ userId: userId.trim().toUpperCase(), password })
   }
 
-  return <AuthLayout story="One account. Your campus, closer." storyLine="Your verified campus role connects you to the services you need.">
+  return <AuthLayout campusExperience story="One account. Your campus, closer." storyLine="Your verified campus role connects you to the services you need.">
     <button className="auth-back-link" onClick={onBack}><ArrowLeft size={14}/> All login options</button>
     <span className="auth-selected-role"><Icon size={17}/>{role}</span>
     <span className="login-welcome-label">CAMPUS ONE · SECURE SIGN IN</span>
@@ -63,7 +63,7 @@ export function RoleLoginView({ role, onBack, onRegister, onSubmit, busy, error 
 }
 
 export function PasswordCreatedView({ onLogin }) {
-  return <AuthLayout story="Your campus account, ready." storyLine="Your password has been created securely. Sign in to continue to your campus dashboard.">
+  return <AuthLayout campusExperience story="Your campus account, ready." storyLine="Your password has been created securely. Sign in to continue to your campus dashboard.">
     <span className="login-welcome-label">ACCOUNT SECURITY</span>
     <h2>Password created successfully ✓</h2>
     <p className="login-description">Your password is saved. Continue to the existing Campus One login page to sign in with your Campus One ID and password.</p>
@@ -280,8 +280,8 @@ export function RegistrationStatus({ status, onBack, onPasswordCreated }) {
   </AuthLayout>
 }
 
-function AuthLayout({ children, story, storyLine }) {
-  return <main className="login-shell page-enter"><section className="login-photo" aria-label="Puran Murti Vidyapeeth campus"><div className="login-photo-background"/><div className="login-image-shade"/><div className="login-brand"><span className="brand-mark"><span/><span/><span/><span/></span><span className="brand-name">CAMPUS <span>ONE</span></span></div><div className="login-story"><span className="login-kicker"><span/> CAMPUS, CONNECTED</span><h1>{story}</h1><p>{storyLine}</p><span className="login-campus-label"><span className="institution-mark">P</span><span>PURAN MURTI VIDYAPEETH<small>Sonipat, Haryana</small></span></span></div><span className="login-image-credit">PURAN MURTI VIDYAPEETH · YOUR CAMPUS, CLOSER</span></section><section className="login-form-side"><div className="login-form-wrap auth-panel">{children}</div></section></main>
+function AuthLayout({ children, story, storyLine, campusExperience = false }) {
+  return <main className={`login-shell page-enter${campusExperience ? ' login-campus-experience' : ''}`}><section className={`login-photo${campusExperience ? ' login-photo-campus' : ''}`} aria-label="Puran Murti Vidyapeeth campus">{campusExperience ? <img className="login-photo-background" src="/puran-murti-vidyapeeth-campus.png.jpeg" alt="" /> : <div className="login-photo-background"/>}<div className="login-image-shade"/><div className="login-brand"><span className="brand-mark"><span/><span/><span/><span/></span><span className="brand-name">CAMPUS <span>ONE</span></span></div><div className="login-story">{campusExperience ? <><span className="login-kicker"><span/> PURAN MURTI VIDYAPEETH</span><h1>Campus One</h1><p>Your Campus. One Platform.</p></> : <><span className="login-kicker"><span/> CAMPUS, CONNECTED</span><h1>{story}</h1><p>{storyLine}</p><span className="login-campus-label"><img className="institution-mark" src="/puran-murti-vidyapeth-logo-png.jpeg" alt="Puran Murti Vidyapeeth logo" /><span>PURAN MURTI VIDYAPEETH<small>Sonipat, Haryana</small></span></span></>}</div><span className="login-image-credit">PURAN MURTI VIDYAPEETH · YOUR CAMPUS, CLOSER</span></section><section className="login-form-side"><div className="login-form-wrap auth-panel">{campusExperience && <div className="login-panel-branding"><img src="/puran-murti-vidyapeth-logo-png.jpeg" alt="Puran Murti Vidyapeeth logo" /><strong>Campus One</strong><span>Smart Campus Management Platform</span><small>Puran Murti Vidyapeeth</small></div>}{children}</div></section></main>
 }
 
 function idExample(role) {

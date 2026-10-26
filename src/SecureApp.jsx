@@ -24,6 +24,7 @@ import EventsClubs from './components/EventsClubs.jsx'
 import CampusVoice from './components/CampusVoice.jsx'
 import SkillExchange from './components/SkillExchange.jsx'
 import TeacherReview from './components/TeacherReview.jsx'
+import CampusInsight from './components/CampusInsight.jsx'
 import { navigationGroups } from './data/campusData'
 import SettingsPage from './components/SettingsPage.jsx'
 import { loadUiPreferences, saveUiPreferences } from './settings/preferences.js'
@@ -66,6 +67,7 @@ export default function SecureApp() {
   const [registrationStatus, setRegistrationStatus] = useState(null)
   const [user, setUser] = useState(null)
   const [activePage, setActivePage] = useState('overview')
+  const [copilotQuestion, setCopilotQuestion] = useState('')
   const [requestReference, setRequestReference] = useState(() => new URLSearchParams(window.location.search).get('request') || '')
   const [mobileNav, setMobileNav] = useState(false)
   const [toast, setToast] = useState('')
@@ -103,6 +105,13 @@ export default function SecureApp() {
         : pageUrl(page)
     window.history[replace ? 'replaceState' : 'pushState']({}, '', url)
   }, [user])
+
+  const askCampusCopilot = useCallback((question) => {
+    setCopilotQuestion(question || '')
+    applyRoute('copilot')
+  }, [applyRoute])
+
+  const clearCopilotQuestion = useCallback(() => setCopilotQuestion(''), [])
 
   const signOut = useCallback(async () => {
     setError('')
@@ -263,7 +272,7 @@ export default function SecureApp() {
       <Sidebar activePage={activePage} user={user} onNavigate={(page) => applyRoute(page)} onLogout={signOut} mobileOpen={mobileNav} onClose={() => setMobileNav(false)}/>
       <main className="main-area">
         <TopBar pageTitle={title} user={user} onNavigate={(page, referenceId) => applyRoute(page, { referenceId })} onAction={handleAction} onMobileMenu={() => setMobileNav(true)}/>
-        {activePage === 'overview' && <Dashboard user={user} onNavigate={(page) => applyRoute(page)} onAction={handleAction} adminView={user.role === APP_ROLES.ADMIN}/>}
+        {activePage === 'overview' && <Dashboard user={user} onNavigate={(page) => applyRoute(page)} onAction={handleAction} onAskCopilot={askCampusCopilot} adminView={user.role === APP_ROLES.ADMIN}/>}
         {activePage === 'profile' && <ProfilePage user={user} onUserChange={setUser} onNotify={showToast}/>}
         {activePage === 'settings' && <SettingsPage
           preferences={uiPreferences}
@@ -289,10 +298,11 @@ export default function SecureApp() {
         {activePage === 'campus-voice' && <CampusVoice user={user} onNotify={showToast}/>}
         {activePage === 'skill-exchange' && <SkillExchange user={user} onNotify={showToast}/>}
         {activePage === 'teacher-review' && <TeacherReview user={user} onNotify={showToast}/>}
+        {activePage === 'analytics' && user.role === APP_ROLES.ADMIN && <CampusInsight onNavigate={(page) => applyRoute(page)}/>}
         {activePage === 'sports-management' && [APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <SportsManagement user={user} onNotify={showToast}/>}
         {activePage === 'sports' && [APP_ROLES.STUDENT, APP_ROLES.STAFF, APP_ROLES.HOD, APP_ROLES.SPORTS, APP_ROLES.ADMIN].includes(user.role) && <StudentSports user={user} onNotify={showToast}/>}
         {['department-requests', 'department-students'].includes(activePage) && user.role === APP_ROLES.HOD && <DepartmentDashboard user={user} page={activePage} requestId={requestReference} onClearRequest={() => setRequestReference('')} onNotify={showToast}/>}
-  {titles[activePage] && !['overview', 'profile', 'settings', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction}/>}
+  {titles[activePage] && !['overview', 'profile', 'settings', 'notices', 'complaints', 'lost-found', 'hostel', 'food', 'canteen', 'sports', 'events', 'campus-voice', 'skill-exchange', 'teacher-review', 'analytics', 'users', 'campus-management', 'sports-management', 'department-requests', 'department-students', 'unauthorized', 'not-found'].includes(activePage) && <ModuleView page={activePage} user={user} onAction={handleAction} onNavigate={(page) => applyRoute(page)} initialQuestion={activePage === 'copilot' ? copilotQuestion : ''} onQuestionUsed={clearCopilotQuestion}/>}
       </main>
     </>}
     {user.mustChangePassword && <PasswordChangeView user={user} onChanged={(updatedUser) => { setUser(updatedUser); setActivePage(ROLE_START_PAGES[updatedUser.role]); window.history.replaceState({}, '', pageUrl(ROLE_START_PAGES[updatedUser.role])); showToast('Your password is set. Welcome to Campus One.') }}/>}

@@ -5,8 +5,53 @@ import { api } from '../api/client'
 const STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'REJECTED']
 const STEPS = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED']
 const CATEGORIES = {
-  Veg: ['Tea & Coffee', 'Sandwich', 'Shakes & Drinks', 'Burger', 'Patty & Samosa', 'Paneer Momos', 'Maggi', 'French Fries', 'Pizza', 'Chinese', 'Add On'],
-  'Non-Veg': ['Burger', 'Sandwich', 'Chicken Momos', 'Eggs', 'Patty', 'Continental', 'Add On', 'Chinese'],
+  Veg: ['Tea & Coffee', 'Sandwich', 'Paneer Momos', 'Burger', 'Shakes & Drinks', 'Patty & Samosa', 'Maggi', 'French Fries', 'Pizza', 'Chinese', 'Add On'],
+  'Non-Veg': ['Chicken Burger', 'Sandwich', 'Chicken Momos', 'Eggs', 'Patty', 'Continental', 'Chinese', 'Add On'],
+}
+const CATEGORY_ICONS = {
+  'Tea & Coffee': '🍵', Sandwich: '🥪', 'Paneer Momos': '🥟', 'Chicken Momos': '🥟',
+  Burger: '🍔', 'Chicken Burger': '🍔', 'Shakes & Drinks': '🥤', 'Patty & Samosa': '🥟',
+  Maggi: '🍜', 'French Fries': '🍟', Pizza: '🍕', Chinese: '🥢', 'Add On': '➕',
+  Eggs: '🍳', Patty: '🥟', Continental: '🍗',
+}
+
+function menuDiet(value) {
+  return String(value).toLowerCase().includes('non') ? 'Non-Veg' : 'Veg'
+}
+
+function menuCategory(item) {
+  const category = item.category
+  if (category === 'Drinks') return 'Shakes & Drinks'
+  if (category === 'Momos') return menuDiet(item.diet) === 'Non-Veg' ? 'Chicken Momos' : 'Paneer Momos'
+  if (category === 'Burger' && menuDiet(item.diet) === 'Non-Veg') return 'Chicken Burger'
+  return category
+}
+
+function groupMenuItems(items) {
+  const groups = new Map()
+  const individual = []
+  items.forEach((item) => {
+    if (!['Half', 'Full'].includes(item.size)) {
+      individual.push({ key: item.id, items: [item] })
+      return
+    }
+    const key = `${item.diet}\u0000${item.category}\u0000${item.name}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(item)
+  })
+  const portions = []
+  groups.forEach((variants) => {
+    const halves = variants.filter((item) => item.size === 'Half')
+    const fulls = variants.filter((item) => item.size === 'Full')
+    const pairedCount = Math.min(halves.length, fulls.length)
+    for (let index = 0; index < pairedCount; index += 1) {
+      portions.push({ key: `${halves[index].id}:${fulls[index].id}`, items: [halves[index], fulls[index]] })
+    }
+    for (const item of [...halves.slice(pairedCount), ...fulls.slice(pairedCount)]) {
+      individual.push({ key: item.id, items: [item] })
+    }
+  })
+  return [...portions, ...individual]
 }
 
 export default function Canteen({ user, onNotify, onLogout, onBack }) {
@@ -16,8 +61,9 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
   const [orders, setOrders] = useState([])
   const [notifications, setNotifications] = useState([])
   const [cart, setCart] = useState({})
-  const [diet, setDiet] = useState('All')
+  const [diet, setDiet] = useState('Veg')
   const [category, setCategory] = useState('All')
+  const [selectedVariants, setSelectedVariants] = useState({})
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState(manager ? 'orders' : 'menu')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -47,11 +93,27 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
     return () => window.clearInterval(timer)
   }, [customer, manager, user.role])
 
-  const categories = diet === 'All' ? ['All', ...new Set(Object.values(CATEGORIES).flat())] : ['All', ...CATEGORIES[diet]]
-  const visibleItems = useMemo(() => items.filter((item) =>
-    (diet === 'All' || item.diet === diet)
+  const menuItems = useMemo(() => items.map((item) => ({ ...item, diet: menuDiet(item.diet), category: menuCategory(item) })), [items])
+  const searchActive = Boolean(search.trim())
+  const shownDiets = searchActive ? ['Veg', 'Non-Veg'] : [diet]
+  const baseCategories = searchActive ? [...CATEGORIES.Veg, ...CATEGORIES['Non-Veg'].filter((entry) => !CATEGORIES.Veg.includes(entry))] : CATEGORIES[diet]
+  const relevantDiets = searchActive ? ['Veg', 'Non-Veg'] : [diet]
+  const additionalCategories = [...new Set(menuItems.filter((item) => relevantDiets.includes(item.diet)).map((item) => item.category))]
+    .filter((entry) => !baseCategories.includes(entry))
+  const categories = [...baseCategories, ...additionalCategories]
+  const visibleItems = useMemo(() => menuItems.filter((item) =>
+    (searchActive || item.diet === diet)
     && (category === 'All' || item.category === category)
-    && (!search || `${item.name} ${item.category} ${item.description}`.toLowerCase().includes(search.toLowerCase()))), [items, diet, category, search])
+    && (!search || `${item.name} ${item.category} ${item.description}`.toLowerCase().includes(search.toLowerCase()))), [menuItems, diet, category, search, searchActive])
+  const menuSections = shownDiets.map((menuDietName) => ({
+    diet: menuDietName,
+    categories: categories.filter((categoryName) => {
+      return visibleItems.some((item) => item.diet === menuDietName && item.category === categoryName)
+    }).map((categoryName) => ({
+      name: categoryName,
+      items: visibleItems.filter((item) => item.diet === menuDietName && item.category === categoryName),
+    })),
+  })).filter((section) => section.categories.length > 0)
   const cartLines = Object.values(cart)
   const itemCount = cartLines.reduce((sum, line) => sum + line.quantity, 0)
   const total = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0)
@@ -125,7 +187,7 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
   return <div className="module-page page-enter canteen-page">
     <div className="module-breadcrumb">{onBack && <button className="canteen-back-link" onClick={onBack}><ArrowLeft size={13}/>Food & Dine In</button>}CAMPUS <span>›</span> CANTEEN</div>
     <section className="module-hero canteen-hero">
-      <div className="module-title-area"><span className="module-icon"><Utensils size={20}/></span><span className="module-eyebrow">PURAN MURTI VIDYAPEETH · FRESHLY MADE</span><h1>{manager ? 'Canteen dashboard' : 'Canteen'}<span className="module-title-period">.</span></h1><p>{manager ? 'Review incoming orders and update each order through delivery.' : 'Browse the menu, choose your favourites and pre-order from campus.'}</p></div>
+      <div className="module-title-area"><span className="module-icon"><Utensils size={20}/></span><span className="module-eyebrow">PURAN MURTI VIDYAPEETH</span><h1>{manager ? 'Canteen dashboard' : 'Campus Canteen'}<span className="module-title-period">.</span></h1><p>{manager ? 'Review incoming orders and update each order through delivery.' : 'Fresh · Fast · Affordable · Your campus food court, ready when you are.'}</p></div>
       {user.role === 'Canteen Staff' && <div className="canteen-account-actions"><button className="canteen-profile-link" onClick={() => onNavigate?.('profile')}><UserRound size={14}/>My Profile</button><button className="canteen-profile-link" onClick={() => onNavigate?.('settings')}><Settings2 size={14}/>Settings</button><button className="canteen-signout" onClick={onLogout}>Sign out</button></div>}
     </section>
     {error && <div className="management-alert canteen-alert" role="alert"><CircleAlert size={15}/>{error}<button onClick={() => setError('')} aria-label="Dismiss"><X size={14}/></button></div>}
@@ -135,12 +197,20 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
       <button className={tab === 'orders' ? 'canteen-tab-active' : ''} onClick={() => setTab('orders')}><ShoppingBag size={14}/>My Orders{orders.length > 0 && <span>{orders.length}</span>}</button>
     </div>}
     {!manager && tab === 'menu' && <>
+      <section className="canteen-diet-panels" aria-label="Choose a menu">
+        {['Veg', 'Non-Veg'].map((value) => <button key={value} className={`canteen-diet-panel ${value === 'Veg' ? 'canteen-veg-panel' : 'canteen-nonveg-panel'} ${diet === value ? 'canteen-diet-panel-active' : ''}`} aria-pressed={diet === value} onClick={() => { setDiet(value); setCategory('All') }}>
+          <span className="canteen-diet-emblem" aria-hidden="true">{value === 'Veg' ? '●' : '◆'}</span>
+          <span><strong>{value.toUpperCase()} MENU</strong><small>{value === 'Veg' ? 'Fresh vegetarian favourites' : 'Chicken & egg favourites'}</small></span>
+          <span className="canteen-diet-arrow" aria-hidden="true">→</span>
+        </button>)}
+      </section>
       <div className="canteen-browse-layout">
       <div className="canteen-filters">
-        <label className="module-search canteen-search"><Search size={15}/><input aria-label="Search food" placeholder="Search the menu…" value={search} onChange={(event) => setSearch(event.target.value)}/></label>
-        <div className="canteen-diet-filters" aria-label="Filter by menu type">{['All', 'Veg', 'Non-Veg'].map((value) => <button key={value} className={diet === value ? 'canteen-filter-active' : ''} onClick={() => { setDiet(value); setCategory('All') }}>{value}</button>)}</div>
-        <select aria-label="Filter by category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="All">All categories</option>{categories.filter((value) => value !== 'All').map((value, index) => <option key={`${value}-${index}`} value={value}>{value}</option>)}</select>
-        {manager && <button className="module-primary" onClick={() => editItem()}><Plus size={14}/> Add food item</button>}
+        <label className="module-search canteen-search"><Search size={15}/><input aria-label="Search food" placeholder="Search the full menu…" value={search} onChange={(event) => setSearch(event.target.value)}/></label>
+        <nav className="canteen-category-nav" aria-label="Filter by menu category">
+          <button className={category === 'All' ? 'canteen-category-active' : ''} onClick={() => setCategory('All')}>All categories</button>
+          {categories.map((value) => <button key={value} className={category === value ? 'canteen-category-active' : ''} onClick={() => setCategory(category === value ? 'All' : value)}><span aria-hidden="true">{CATEGORY_ICONS[value] || '•'}</span>{value}</button>)}
+        </nav>
       </div>
       {!manager && <section className="canteen-cart" aria-label="Current order">
         <div className="canteen-section-heading"><div><span className="section-eyebrow">YOUR PRE-ORDER</span><h2>Your order <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span></h2></div><strong className="canteen-cart-total">Order total <b>₹{total}</b></strong></div>
@@ -149,13 +219,13 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
           <button className="module-primary canteen-place-order" disabled={busy === 'place-order'} onClick={placeOrder}>{busy === 'place-order' ? 'Placing order…' : 'Place Pre-Order'} <Check size={14}/></button>
         </>}
       </section>}
-      {loading ? <div className="management-state canteen-menu-state"><span className="loading-spinner"/>Loading canteen menu…</div> : visibleItems.length === 0 ? <div className="management-state canteen-menu-state">{manager ? 'No menu items match your filters.' : 'No available items match your search.'}</div> : <div className="canteen-food-grid">{visibleItems.map((item) => <article className={`canteen-food-card ${!item.available ? 'canteen-unavailable' : ''}`} key={item.id}>
-        {item.imageUrl ? <img className="canteen-food-image" src={item.imageUrl} alt="" loading="lazy"/> : <div className="canteen-food-image canteen-food-placeholder"><Utensils size={23}/></div>}
-        <div className="canteen-food-card-body"><div className="canteen-card-tags"><span className={`canteen-diet-tag ${item.diet === 'Veg' ? 'diet-veg' : 'diet-nonveg'}`}><i/>{item.diet}</span><span className={item.available ? 'canteen-available-tag' : 'canteen-unavailable-tag'}>{item.available ? 'Available' : 'Unavailable'}</span></div>
-          <h3>{item.name}{item.size && <small> · {item.size}</small>}</h3><span className="canteen-food-category">{item.category}</span>{item.description && <p>{item.description}</p>}
-          <div className="canteen-food-card-footer"><strong>₹{item.price}</strong>{manager ? <button className="canteen-edit-button" onClick={() => editItem(item)}>Edit item</button> : cart[item.id]?.quantity ? <div className="canteen-quantity"><button aria-label={`Decrease ${item.name}${item.size ? ` · ${item.size}` : ''}`} onClick={() => changeQuantity(item.id, -1)}><Minus size={13}/></button><strong>{cart[item.id].quantity}</strong><button aria-label={`Increase ${item.name}${item.size ? ` · ${item.size}` : ''}`} onClick={() => changeQuantity(item.id, 1)}><Plus size={13}/></button></div> : <button className="module-primary" disabled={!item.available} onClick={() => addItem(item)}><Plus size={14}/> Add</button>}</div>
-        </div>
-      </article>)}</div>}
+      {loading ? <div className="management-state canteen-menu-state"><span className="loading-spinner"/>Loading canteen menu…</div> : visibleItems.length === 0 ? <div className="management-state canteen-menu-state">No available items match your search.</div> : <div className="canteen-menu-sections">
+        {searchActive && <p className="canteen-search-scope">Search results include both menus. Every item is marked Veg or Non-Veg.</p>}
+        {menuSections.map((section) => <section className={`canteen-diet-section ${section.diet === 'Veg' ? 'canteen-veg-section' : 'canteen-nonveg-section'}`} key={section.diet}>
+          {searchActive && <h2 className="canteen-diet-section-title"><span aria-hidden="true">{section.diet === 'Veg' ? '●' : '◆'}</span>{section.diet} Menu</h2>}
+          {section.categories.map((entry) => <MenuCategorySection key={`${section.diet}-${entry.name}`} category={entry.name} items={entry.items} diet={section.diet} cart={cart} selectedVariants={selectedVariants} onSelectVariant={(key, id) => setSelectedVariants((current) => ({ ...current, [key]: id }))} onAdd={addItem} onChangeQuantity={changeQuantity}/>)}
+        </section>)}
+      </div>}
       </div>
     </>}
     {tab === 'orders' && <section className="canteen-orders-section">
@@ -185,6 +255,32 @@ export default function Canteen({ user, onNotify, onLogout, onBack }) {
     </section></div>}
     <footer className="dashboard-footer"><span><span className="footer-status-dot"/>Menu and orders sync with the campus database</span><span>{user.role} · {user.id}</span></footer>
   </div>
+}
+
+function MenuCategorySection({ category, items, diet, cart, selectedVariants, onSelectVariant, onAdd, onChangeQuantity }) {
+  const menuCards = groupMenuItems(items)
+  return <section className={`canteen-category-section ${diet === 'Veg' ? 'canteen-veg-category' : 'canteen-nonveg-category'}`}>
+    <header className="canteen-category-heading"><span className="canteen-category-illustration" aria-hidden="true">{CATEGORY_ICONS[category] || '•'}</span><div><h2>{category}</h2><span>{items.length} {items.length === 1 ? 'favourite' : 'favourites'}</span></div></header>
+    <div className="canteen-food-grid">{menuCards.map((group) => {
+      const selectedId = selectedVariants[group.key]
+      const activeItem = group.items.find((item) => item.id === selectedId)
+        || group.items.find((item) => item.size === 'Half')
+        || group.items[0]
+      const count = cart[activeItem.id]?.quantity || 0
+      const hasPortionChoice = group.items.length > 1 && group.items.some((item) => item.size === 'Half') && group.items.some((item) => item.size === 'Full')
+      return <article className={`canteen-food-card ${diet === 'Veg' ? 'food-card-veg' : 'food-card-nonveg'} ${!activeItem.available ? 'canteen-unavailable' : ''}`} key={group.key}>
+        <div className="canteen-food-card-body">
+          <div className="canteen-card-tags"><span className={`canteen-diet-tag ${diet === 'Veg' ? 'diet-veg' : 'diet-nonveg'}`}><i/>{diet}</span><span className={activeItem.available ? 'canteen-available-tag' : 'canteen-unavailable-tag'}>{activeItem.available ? 'Available' : 'Unavailable'}</span></div>
+          <h3>{activeItem.name}</h3>
+          {activeItem.description && <p>{activeItem.description}</p>}
+          {hasPortionChoice ? <div className="canteen-portion-picker" role="group" aria-label={`Choose portion for ${activeItem.name}`}>
+            <span>PORTION</span><div>{group.items.map((item) => <button type="button" key={item.id} aria-pressed={activeItem.id === item.id} className={activeItem.id === item.id ? 'portion-selected' : ''} onClick={() => onSelectVariant(group.key, item.id)}>{item.size} — ₹{item.price}</button>)}</div>
+          </div> : activeItem.size && <span className="canteen-single-portion">{activeItem.size} portion</span>}
+          <div className="canteen-food-card-footer"><strong>₹{activeItem.price}</strong>{count > 0 ? <div className="canteen-quantity"><button aria-label={`Decrease ${activeItem.name}${activeItem.size ? ` · ${activeItem.size}` : ''}`} onClick={() => onChangeQuantity(activeItem.id, -1)}><Minus size={14}/></button><strong>{count}</strong><button aria-label={`Increase ${activeItem.name}${activeItem.size ? ` · ${activeItem.size}` : ''}`} onClick={() => onChangeQuantity(activeItem.id, 1)}><Plus size={14}/></button></div> : <button className="module-primary canteen-add-button" disabled={!activeItem.available} onClick={() => onAdd(activeItem)}><Plus size={14}/> Add</button>}</div>
+        </div>
+      </article>
+    })}</div>
+  </section>
 }
 
 function nextActions(status) {

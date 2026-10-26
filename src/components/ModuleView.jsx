@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'react'
 import {
-  Activity, ArrowRight, ArrowUpRight, Bell, BookOpen, Building2,
+  Activity, ArrowRight, ArrowUpRight, Bell, BookOpen, Building2, Flame,
   CalendarDays, ChartNoAxesCombined, Check, ChevronRight, Clock3,
-  ContactRound, HeartPulse, Map, MapPin, Megaphone,
+  ContactRound, HeartPulse, Home, Map, MapPin, Megaphone,
   MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles,
-  Utensils,
+  Star, Trophy, Utensils,
 } from 'lucide-react'
 import { moduleDetails } from '../data/campusData'
 import { api } from '../api/client'
 import { isStudentExperienceRole } from '../auth/access'
+import { answerCampusQuestion } from '../assistant/campusAssistant'
 
 const icons = { Activity, ArrowRight, Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ContactRound, HeartPulse, Map, MapPin, Megaphone, MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles, Utensils }
 const MESS_MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Dinner']
+const copilotSuggestions = [
+  { label: 'Latest Notices', question: 'Show me the latest notices.', icon: Megaphone, accent: 'blue' },
+  { label: 'Upcoming Events', question: 'What events are coming up?', icon: CalendarDays, accent: 'purple' },
+  { label: 'Canteen Menu', question: 'What is available in the canteen?', icon: Utensils, accent: 'teal' },
+  { label: 'Hostel Information', question: 'How do I access Hostel?', icon: Building2, accent: 'gold' },
+  { label: 'Sports & Activities', question: 'What sports activities are listed?', icon: Trophy, accent: 'blue' },
+  { label: 'Faculty Reviews', question: 'How does Faculty Review work?', icon: Star, accent: 'purple' },
+]
 
 function formatMealTime(value) {
   if (!value) return ''
@@ -19,10 +28,12 @@ function formatMealTime(value) {
   return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }
 
-export default function ModuleView({ page, user, onAction }) {
+export default function ModuleView({ page, user, onAction, onNavigate, initialQuestion = '', onQuestionUsed }) {
   const studentExperience = isStudentExperienceRole(user.role)
   const [filter, setFilter] = useState('')
-  const [copilotQuestion, setCopilotQuestion] = useState('')
+  const [copilotQuestion, setCopilotQuestion] = useState(initialQuestion)
+  const [copilotMessages, setCopilotMessages] = useState([])
+  const [copilotBusy, setCopilotBusy] = useState(false)
   const [liveRecords, setLiveRecords] = useState(null)
   const [messSettings, setMessSettings] = useState(null)
   const [complaintRecords, setComplaintRecords] = useState(null)
@@ -115,6 +126,33 @@ export default function ModuleView({ page, user, onAction }) {
     return () => { active = false }
   }, [page, user.role, studentExperience])
 
+  useEffect(() => {
+    if (!initialQuestion) return
+    setCopilotQuestion(initialQuestion)
+    onQuestionUsed?.()
+  }, [initialQuestion, onQuestionUsed])
+
+  async function askCopilot(question = copilotQuestion) {
+    const requestedQuestion = question.trim()
+    if (!requestedQuestion || copilotBusy) return
+    setCopilotQuestion(requestedQuestion)
+    setCopilotBusy(true)
+    try {
+      const answer = await answerCampusQuestion(requestedQuestion, { user, api })
+      setCopilotMessages((messages) => [...messages, { question: requestedQuestion, answer }])
+    } catch (reason) {
+      const message = reason.status === 403
+        ? 'Your current role does not have access to that campus information.'
+        : 'Campus information is temporarily unavailable. Please try again.'
+      setCopilotMessages((messages) => [...messages, {
+        question: requestedQuestion,
+        answer: { message, destination: null },
+      }])
+    } finally {
+      setCopilotBusy(false)
+    }
+  }
+
   async function placeFoodOrder(event) {
     event.preventDefault()
     setOrderBusy(true)
@@ -150,16 +188,16 @@ export default function ModuleView({ page, user, onAction }) {
   }
 
   return (
-    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'events' ? 'campus-events-page' : ''}`}>
+    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'analytics' ? 'analytics-page' : page === 'events' ? 'campus-events-page' : ''}`}>
       <div className="module-breadcrumb">YOUR CAMPUS <ChevronRight size={12} /> CAMPUS SERVICES</div>
       <section className="module-hero"><div className="module-title-area"><span className="module-icon"><Icon size={20} strokeWidth={1.8} /></span><span className="module-eyebrow">{detail.eyebrow}</span><h1>{detail.title}<span className="module-title-period">.</span></h1><p>{detail.description}</p></div>{page === 'complaints' && <button className="module-primary" onClick={() => onAction('Tell us what is on your mind')}><MessageCircle size={15} /> Make a request</button>}{page === 'copilot' && <span className="module-available"><span /> READY WHEN YOU ARE</span>}</section>
 
-      {(page === 'emergency' || detail.stats.length > 0) && <section className="module-stats">{(page === 'emergency' ? [['24/7', 'Campus coverage'], ['Critical', 'Fast support'], ['Safety first', 'Trusted teams']] : detail.stats).map(([label, value], index) => <div className="module-stat" key={`${page}-${label}`}><span className="module-stat-icon"><StatIcon index={index} /></span><span><span>{label}</span><strong>{value}</strong></span>{index === 0 && <ArrowUpRight className="module-stat-trend" size={15} />}</div>)}</section>}
+      {(page !== 'emergency' && page !== 'analytics' && detail.stats.length > 0) && <section className="module-stats">{detail.stats.map(([label, value], index) => <div className="module-stat" key={`${page}-${label}`}><span className="module-stat-icon"><StatIcon index={index} /></span><span><span>{label}</span><strong>{value}</strong></span>{index === 0 && <ArrowUpRight className="module-stat-trend" size={15} />}</div>)}</section>}
 
       {page === 'emergency' && <section className="emergency-center-shell"><div className="emergency-header"><span className="module-icon emergency-icon"><ShieldAlert size={22} strokeWidth={1.8} /></span><div><span className="section-eyebrow">EMERGENCY RESPONSE</span><h2>Campus Emergency Center</h2><p>Reach the right support quickly and safely. Call for campus security, medical help, ambulance, or urgent campus assistance.</p></div></div>
         {recordsError ? <div className="module-no-results">{recordsError}</div> : !liveRecords ? <div className="module-no-results">Loading emergency contacts…</div> : (
           <>
-            {quickActions.length > 0 && <div className="emergency-quick-actions">{quickActions.map((contact) => <a key={contact.id} className="emergency-quick-button" href={contact.validPhone ? `tel:${String(contact.phone).replace(/[^\d+]/g, '')}` : undefined} onClick={(event) => { if (!contact.validPhone) event.preventDefault(); else runAction(contact.name) }}><span>{contact.category === 'MAIN_GATE_GUARD' ? '🛡️' : contact.category === 'HOSTEL_WARDEN' ? '🏠' : contact.category === 'MEDICAL_EMERGENCY' ? '🏥' : contact.category === 'AMBULANCE' ? '🚑' : contact.category === 'FIRE_EMERGENCY' ? '🔥' : '📞'}</span>{contact.category === 'MAIN_GATE_GUARD' ? 'Security' : contact.category === 'HOSTEL_WARDEN' ? 'Hostel' : contact.category === 'MEDICAL_EMERGENCY' ? 'Medical' : contact.category === 'AMBULANCE' ? 'Ambulance' : contact.category === 'FIRE_EMERGENCY' ? 'Fire' : 'Emergency'}</a>)}</div>}
+            {quickActions.length > 0 && <div className="emergency-quick-actions">{quickActions.map((contact) => <a key={contact.id} className="emergency-quick-button" href={contact.validPhone ? `tel:${String(contact.phone).replace(/[^\d+]/g, '')}` : undefined} onClick={(event) => { if (!contact.validPhone) event.preventDefault(); else runAction(contact.name) }}><span><EmergencyActionIcon category={contact.category}/></span>{contact.category === 'MAIN_GATE_GUARD' ? 'Security' : contact.category === 'HOSTEL_WARDEN' ? 'Hostel' : contact.category === 'MEDICAL_EMERGENCY' ? 'Medical' : contact.category === 'AMBULANCE' ? 'Ambulance' : contact.category === 'FIRE_EMERGENCY' ? 'Fire' : 'Emergency'}</a>)}</div>}
             {hostelEmergencyGroups.length > 0 && <div className="emergency-section-block"><div className="module-list-header"><div><span className="section-eyebrow">HOSTEL EMERGENCY</span><h2>Hostel emergency contacts</h2></div></div><div className="emergency-hostel-groups">{hostelEmergencyGroups.map((group) => <div className="emergency-hostel-group" key={group.name}><h3>{group.name}</h3><div className="emergency-contact-grid">{group.contacts.map((contact) => {
               const telHref = contact.validPhone ? `tel:${String(contact.phone).replace(/[^\d+]/g, '')}` : undefined
               return <article className="emergency-contact-card" key={contact.id}><div className="emergency-card-header"><span className="emergency-card-badge">{categoryLabel(contact.category)}</span>{contact.available24x7 && <span className="emergency-card-status">24/7</span>}</div><h3>{contact.name}</h3><p>{contact.description}</p><div className="emergency-card-meta"><span>{contact.hostelName || contact.location}</span>{contact.phone && <span>{contact.phone}</span>}</div><div className="emergency-card-actions"><a className={`emergency-call-button${contact.validPhone ? '' : ' disabled'}`} href={telHref} aria-disabled={!contact.validPhone} onClick={(event) => { if (!contact.validPhone) event.preventDefault(); else runAction(contact.name) }}>Call now</a>{contact.locationUrl && <a className="emergency-map-link" href={contact.locationUrl} target="_blank" rel="noreferrer">View location</a>}</div>{!contact.validPhone && <small className="emergency-instruction">Phone number unavailable or invalid.</small>}</article>
@@ -178,7 +216,64 @@ export default function ModuleView({ page, user, onAction }) {
         <div className="emergency-location-panel"><div className="module-list-header"><div><span className="section-eyebrow">SAFETY LOCATIONS</span><h2>Campus Emergency Locations</h2></div></div>{emergencyLocations.length === 0 ? <div className="module-no-results">No emergency locations are configured yet.</div> : <div className="emergency-location-grid">{emergencyLocations.map((location) => <article className="emergency-location-card" key={location.id}><strong>{location.name}</strong><span>{location.description}</span>{location.url && <a href={location.url} target="_blank" rel="noreferrer">View Location</a>}</article>)}</div>}</div>
       </section>}
 
-      {page === 'copilot' && <section className="copilot-chat"><div className="copilot-chat-heading"><span className="chat-spark"><Sparkles size={16} /></span><div><strong>What can I help you with?</strong><span>Ask away. Your campus copilot is listening.</span></div></div><form className="copilot-chat-form" onSubmit={(event) => { event.preventDefault(); if (copilotQuestion.trim()) runAction(copilotQuestion); else runAction('Ask about your campus') }}><input aria-label="Ask your campus copilot" placeholder="e.g. How can I contact student services?" value={copilotQuestion} onChange={(event) => setCopilotQuestion(event.target.value)} /><button aria-label="Send message"><ArrowRight size={16} /></button></form><div className="chat-suggestions">{detail.suggestions.map((suggestion) => <button key={suggestion} onClick={() => setCopilotQuestion(suggestion)}>{suggestion}<ArrowUpRight size={12} /></button>)}</div><div className="copilot-privacy"><ShieldAlert size={12} /> Campus-trained assistance. Your conversations stay private.</div></section>}
+      {page === 'copilot' && <section className="copilot-chat">
+        <header className="copilot-brand">
+          <span className="copilot-brand-mark"><Sparkles size={18} /></span>
+          <span className="copilot-brand-copy"><strong>Campus One AI</strong><small>Your smart campus assistant</small></span>
+          <span className="copilot-brand-status"><span /> Campus-aware</span>
+        </header>
+
+        <div className={`copilot-conversation${copilotMessages.length ? ' has-messages' : ''}`} aria-live="polite">
+          {copilotMessages.length === 0 ? (
+            <div className="copilot-welcome">
+              <span className="copilot-welcome-orbit"><Sparkles size={21} /></span>
+              <h2>How can I help you today?</h2>
+              <p>Ask about your campus, events, notices, food, hostel, sports and more.</p>
+              <div className="copilot-starter-heading">Try asking</div>
+              <div className="copilot-starter-grid">
+                {copilotSuggestions.map(({ label, question, icon: SuggestionIcon, accent }) => (
+                  <button className={`copilot-starter copilot-starter-${accent}`} type="button" key={label} disabled={copilotBusy} onClick={() => askCopilot(question)}>
+                    <span className="copilot-starter-icon"><SuggestionIcon size={16} /></span>
+                    <span>{label}</span>
+                    <ArrowUpRight className="copilot-starter-arrow" size={14} />
+                  </button>
+                ))}
+              </div>
+              {copilotBusy && <div className="copilot-loading" role="status"><span className="loading-spinner" />Checking campus information…</div>}
+            </div>
+          ) : (
+            <div className="copilot-thread">
+              {copilotMessages.map(({ question, answer }, index) => (
+                <article className="copilot-message-pair" key={`${index}-${question}`}>
+                  <div className="copilot-user-message"><span>{question}</span></div>
+                  <div className="copilot-assistant-message">
+                    <span className="copilot-message-icon"><Sparkles size={13} /></span>
+                    <div className="copilot-message-content">
+                      <strong>Campus One AI</strong>
+                      <p>{answer.message}</p>
+                      {answer.destination && onNavigate && <button type="button" className="copilot-open-module" onClick={() => onNavigate(answer.destination.page)}>Open {answer.destination.label}<ArrowRight size={13} /></button>}
+                    </div>
+                  </div>
+                </article>
+              ))}
+              {copilotBusy && <div className="copilot-loading" role="status"><span className="loading-spinner" />Checking campus information…</div>}
+            </div>
+          )}
+        </div>
+
+        {copilotMessages.length > 0 && <div className="chat-suggestions" aria-label="Suggested questions">
+          {copilotSuggestions.slice(0, 4).map(({ label, question }) => (
+            <button type="button" key={label} disabled={copilotBusy} onClick={() => askCopilot(question)}>{label}<ArrowUpRight size={12} /></button>
+          ))}
+        </div>}
+
+        <form className="copilot-chat-form" onSubmit={(event) => { event.preventDefault(); askCopilot() }}>
+          <Sparkles className="copilot-input-spark" size={17} />
+          <input aria-label="Ask Campus One AI" placeholder="Ask Campus One anything..." value={copilotQuestion} onChange={(event) => setCopilotQuestion(event.target.value)} />
+          <button aria-label="Send message" disabled={copilotBusy || !copilotQuestion.trim()}><ArrowRight size={17} /></button>
+        </form>
+        <div className="copilot-privacy"><ShieldAlert size={13} /> Powered by Campus One · Answers use information available to your account.</div>
+      </section>}
       {page === 'navigation' && <section className="map-preview"><div className="map-canvas"><div className="map-roads road-one"/><div className="map-roads road-two"/><div className="map-roads road-three"/><div className="map-park park-one"/><div className="map-park park-two"/><span className="map-building building-one"><Building2 size={18}/><span>ACADEMIC BLOCK A</span></span><span className="map-building building-two"><Utensils size={16}/><span>NORTH MESS</span></span><span className="map-building building-three"><HeartPulse size={16}/><span>HEALTH CENTRE</span></span><span className="map-pin pin-current"><span /></span><span className="map-pin pin-destination"><MapPin size={14} /></span><span className="map-map-label">PURAN MURTI VIDYAPEETH · SONIPAT</span></div><div className="map-controls"><div><span>3 places</span><span>Across campus</span></div><button onClick={() => runAction('Plan a campus route')}><Map size={15} /> Plan a route</button></div></section>}
 
       {page === 'food' && <>
@@ -198,12 +293,10 @@ export default function ModuleView({ page, user, onAction }) {
 
       {page !== 'emergency' && page !== 'navigation' && page !== 'food' && page !== 'copilot' && <div className="module-search"><Search size={16} /><input aria-label={`Search ${detail.title}`} placeholder={`Find something in ${detail.title.toLowerCase()}...`} value={filter} onChange={(event) => setFilter(event.target.value)} />{filter && <button onClick={() => setFilter('')}>Clear</button>}</div>}
 
-      {page !== 'emergency' && <section className="module-entries"><div className="module-list-header"><div><span className="section-eyebrow">{page === 'complaints' ? 'YOUR SECURE CAMPUS REQUESTS' : page === 'notices' ? 'THE LATEST FROM ACROSS CAMPUS' : page === 'copilot' ? 'GOOD PLACES TO START' : page === 'food' ? 'ON YOUR CAMPUS MENU' : page === 'navigation' ? 'POPULAR PLACES' : 'A FEW PLACES TO START'}</span><h2>{page === 'complaints' ? user.role === 'Staff' ? 'Assigned student requests' : 'Your requests' : page === 'notices' ? 'Your campus updates' : page === 'copilot' ? 'Your campus, in your corner' : page === 'food' ? 'Today at a glance' : page === 'navigation' ? 'Find your destination' : `Explore ${detail.title.toLowerCase()}`}</h2></div><span className="results-count">{visibleComplaints ? visibleComplaints.length : filtered.length} {visibleComplaints ? 'requests' : filtered.length === 1 ? 'item' : 'items'}</span></div>
+      {page !== 'emergency' && page !== 'copilot' && <section className="module-entries"><div className="module-list-header"><div><span className="section-eyebrow">{page === 'complaints' ? 'YOUR SECURE CAMPUS REQUESTS' : page === 'notices' ? 'THE LATEST FROM ACROSS CAMPUS' : page === 'food' ? 'ON YOUR CAMPUS MENU' : page === 'navigation' ? 'POPULAR PLACES' : 'A FEW PLACES TO START'}</span><h2>{page === 'complaints' ? user.role === 'Staff' ? 'Assigned student requests' : 'Your requests' : page === 'notices' ? 'Your campus updates' : page === 'food' ? 'Today at a glance' : page === 'navigation' ? 'Find your destination' : `Explore ${detail.title.toLowerCase()}`}</h2></div><span className="results-count">{visibleComplaints ? visibleComplaints.length : filtered.length} {visibleComplaints ? 'requests' : filtered.length === 1 ? 'item' : 'items'}</span></div>
         {recordsError && <div className="management-alert" role="alert">{recordsError}</div>}
         <div className="module-row-list">{visibleComplaints ? visibleComplaints.map((record, index) => <article className="module-row" key={record.id}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{record.title}</strong><span>{record.details}</span></div>{user.role === 'Staff' && <select className="complaint-status-select" aria-label={`Update ${record.title}`} value={record.status} onChange={(event) => updateComplaint(record, event.target.value)}>{['Open', 'In progress', 'Resolved'].map((status) => <option key={status}>{status}</option>)}</select>}</article>) : filtered.map((row, index) => { const [title, description, action, phoneNumber] = row; const telHref = page === 'emergency' && phoneNumber ? `tel:${String(phoneNumber).replace(/\D+/g, '')}` : 'tel:112'; return <article className="module-row" key={`${title}-${index}`}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{title}</strong><span>{description}</span></div>{page === 'emergency' && <a className="emergency-direct" href={telHref} aria-label={`Call ${title}`} onClick={(event) => { event.preventDefault(); runAction(action) }}><Phone size={15} /></a>}<button className="module-row-action" onClick={() => runAction(action)}>{page === 'emergency' ? 'Call now' : action}<ArrowRight size={13} /></button></article> })}{visibleComplaints && visibleComplaints.length === 0 && <div className="module-no-results">{studentExperience ? 'You have not sent any requests yet.' : 'There are no requests assigned to your account.'}</div>}{!visibleComplaints && filtered.length === 0 && <div className="module-no-results">Nothing here just yet. Try a different search.</div>}</div>
       </section>}
-
-      {page === 'analytics' && <section className="analytics-chart-section"><div className="module-list-header"><div><span className="section-eyebrow">A QUIETER LUNCH RUSH</span><h2>Dining wait times</h2></div><span className="analytics-change"><ArrowUpRight size={13} /> 18% this month</span></div><div className="chart-bars" aria-label="Dining wait times this week">{[['M',40],['T',65],['W',49],['T',76],['F',38],['S',27],['S',32]].map(([label, height], index) => <div className="chart-column" key={`${label}-${index}`}><span style={{ height: `${height}%` }} className={index === 4 ? 'chart-highlight' : ''}/><span>{label}</span></div>)}</div></section>}
 
       <footer className="dashboard-footer"><span><span className="footer-status-dot" />Campus services available</span><span>Campus One · Puran Murti Vidyapeeth</span></footer>
     </div>
@@ -239,4 +332,17 @@ function categoryLabel(category) {
 function StatIcon({ index }) {
   const stats = [<Clock3 size={15}/>, <Activity size={15}/>, <Check size={15}/>]
   return stats[index % stats.length]
+}
+
+function EmergencyActionIcon({ category }) {
+  const Icon = category === 'HOSTEL_WARDEN'
+    ? Home
+    : category === 'MEDICAL_EMERGENCY' || category === 'AMBULANCE'
+      ? HeartPulse
+      : category === 'FIRE_EMERGENCY'
+        ? Flame
+        : category === 'MAIN_GATE_GUARD' || category === 'CAMPUS_SECURITY' || category === 'SECURITY_OFFICE'
+          ? ShieldAlert
+          : Phone
+  return <Icon size={17} aria-hidden="true"/>
 }

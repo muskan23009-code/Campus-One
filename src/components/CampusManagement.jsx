@@ -202,7 +202,7 @@ export default function CampusManagement({ onNotify }) {
   }
 
   return (
-    <div className="module-page page-enter management-page campus-management-page">
+    <div className={`module-page page-enter management-page campus-management-page${section === 'emergency' ? ' campus-emergency-management' : ''}`}>
       <div className="module-breadcrumb">CAMPUS <span>›</span> ADMINISTRATION</div>
       <section className="module-hero">
         <div className="module-title-area">
