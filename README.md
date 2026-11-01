@@ -23,6 +23,7 @@ Create a production build with `npm run build`; `npm run preview` builds and ser
 - `server/auth.js` hashes passwords with scrypt and validates signed, HttpOnly, SameSite session cookies.
 - `server/store.js` stores account and campus records in an atomic, access-restricted JSON database.
 - `src/data/campusData.js` defines campus navigation and fallback service content.
+- `src/data/campusMapLocations.js` keeps approximate schematic positions and walkway connections separate from the verified campus-level map location; `src/data/campusMapRouting.js` finds routes through the editable walkway graph.
 - `src/styles.css` contains the responsive design system and layouts.
 
 ## Campus services

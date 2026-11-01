@@ -113,15 +113,11 @@ export const moduleDetails = {
   navigation: {
     eyebrow: 'YOUR NEXT DESTINATION',
     title: 'Campus map',
-    description: 'Find your way between classes, discover nearby facilities and get there with ease.',
+    description: 'Explore a schematic of campus places or open a geographical map of the verified campus location.',
     icon: 'Map',
     accent: 'mint',
-    stats: [['Search', 'Places & buildings'], ['Walking route', 'Available campus-wide'], ['3 locations', 'Saved favorites']],
-    rows: [
-      ['Academic block A', 'Classrooms · Engineering · First and second floor', 'Get directions'],
-      ['North student mess', 'Food · 6-minute walk · Moderate wait', 'Get directions'],
-      ['Infirmary', 'Health · Ground floor, student services building', 'Get directions'],
-    ],
+    stats: [],
+    rows: [],
   },
   sports: {
     eyebrow: 'FIND YOUR KIND OF ACTIVE',

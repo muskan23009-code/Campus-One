@@ -10,6 +10,7 @@ import { moduleDetails } from '../data/campusData'
 import { api } from '../api/client'
 import { isStudentExperienceRole } from '../auth/access'
 import { answerCampusQuestion } from '../assistant/campusAssistant'
+import CampusMap from './CampusMap.jsx'
 
 const icons = { Activity, ArrowRight, Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ContactRound, HeartPulse, Map, MapPin, Megaphone, MessageCircle, PackageSearch, Phone, Search, ShieldAlert, Sparkles, Utensils }
 const MESS_MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Dinner']
@@ -28,7 +29,7 @@ function formatMealTime(value) {
   return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }
 
-export default function ModuleView({ page, user, onAction, onNavigate, initialQuestion = '', onQuestionUsed }) {
+export default function ModuleView({ page, user, onAction, onNavigate, initialQuestion = '', onQuestionUsed, preferences, onUpdatePreferences }) {
   const studentExperience = isStudentExperienceRole(user.role)
   const [filter, setFilter] = useState('')
   const [copilotQuestion, setCopilotQuestion] = useState(initialQuestion)
@@ -188,7 +189,7 @@ export default function ModuleView({ page, user, onAction, onNavigate, initialQu
   }
 
   return (
-    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'analytics' ? 'analytics-page' : page === 'events' ? 'campus-events-page' : ''}`}>
+    <div className={`module-page module-accent-${detail.accent} page-enter ${page === 'emergency' ? 'emergency-page' : page === 'analytics' ? 'analytics-page' : page === 'events' ? 'campus-events-page' : page === 'navigation' ? 'campus-map-page' : ''}`}>
       <div className="module-breadcrumb">YOUR CAMPUS <ChevronRight size={12} /> CAMPUS SERVICES</div>
       <section className="module-hero"><div className="module-title-area"><span className="module-icon"><Icon size={20} strokeWidth={1.8} /></span><span className="module-eyebrow">{detail.eyebrow}</span><h1>{detail.title}<span className="module-title-period">.</span></h1><p>{detail.description}</p></div>{page === 'complaints' && <button className="module-primary" onClick={() => onAction('Tell us what is on your mind')}><MessageCircle size={15} /> Make a request</button>}{page === 'copilot' && <span className="module-available"><span /> READY WHEN YOU ARE</span>}</section>
 
@@ -274,7 +275,7 @@ export default function ModuleView({ page, user, onAction, onNavigate, initialQu
         </form>
         <div className="copilot-privacy"><ShieldAlert size={13} /> Powered by Campus One · Answers use information available to your account.</div>
       </section>}
-      {page === 'navigation' && <section className="map-preview"><div className="map-canvas"><div className="map-roads road-one"/><div className="map-roads road-two"/><div className="map-roads road-three"/><div className="map-park park-one"/><div className="map-park park-two"/><span className="map-building building-one"><Building2 size={18}/><span>ACADEMIC BLOCK A</span></span><span className="map-building building-two"><Utensils size={16}/><span>NORTH MESS</span></span><span className="map-building building-three"><HeartPulse size={16}/><span>HEALTH CENTRE</span></span><span className="map-pin pin-current"><span /></span><span className="map-pin pin-destination"><MapPin size={14} /></span><span className="map-map-label">PURAN MURTI VIDYAPEETH · SONIPAT</span></div><div className="map-controls"><div><span>3 places</span><span>Across campus</span></div><button onClick={() => runAction('Plan a campus route')}><Map size={15} /> Plan a route</button></div></section>}
+      {page === 'navigation' && <CampusMap preferences={preferences} onUpdatePreferences={onUpdatePreferences} />}
 
       {page === 'food' && <>
         <section className="dining-feature">
@@ -293,7 +294,7 @@ export default function ModuleView({ page, user, onAction, onNavigate, initialQu
 
       {page !== 'emergency' && page !== 'navigation' && page !== 'food' && page !== 'copilot' && <div className="module-search"><Search size={16} /><input aria-label={`Search ${detail.title}`} placeholder={`Find something in ${detail.title.toLowerCase()}...`} value={filter} onChange={(event) => setFilter(event.target.value)} />{filter && <button onClick={() => setFilter('')}>Clear</button>}</div>}
 
-      {page !== 'emergency' && page !== 'copilot' && <section className="module-entries"><div className="module-list-header"><div><span className="section-eyebrow">{page === 'complaints' ? 'YOUR SECURE CAMPUS REQUESTS' : page === 'notices' ? 'THE LATEST FROM ACROSS CAMPUS' : page === 'food' ? 'ON YOUR CAMPUS MENU' : page === 'navigation' ? 'POPULAR PLACES' : 'A FEW PLACES TO START'}</span><h2>{page === 'complaints' ? user.role === 'Staff' ? 'Assigned student requests' : 'Your requests' : page === 'notices' ? 'Your campus updates' : page === 'food' ? 'Today at a glance' : page === 'navigation' ? 'Find your destination' : `Explore ${detail.title.toLowerCase()}`}</h2></div><span className="results-count">{visibleComplaints ? visibleComplaints.length : filtered.length} {visibleComplaints ? 'requests' : filtered.length === 1 ? 'item' : 'items'}</span></div>
+      {page !== 'emergency' && page !== 'copilot' && page !== 'navigation' && <section className="module-entries"><div className="module-list-header"><div><span className="section-eyebrow">{page === 'complaints' ? 'YOUR SECURE CAMPUS REQUESTS' : page === 'notices' ? 'THE LATEST FROM ACROSS CAMPUS' : page === 'food' ? 'ON YOUR CAMPUS MENU' : 'A FEW PLACES TO START'}</span><h2>{page === 'complaints' ? user.role === 'Staff' ? 'Assigned student requests' : 'Your requests' : page === 'notices' ? 'Your campus updates' : page === 'food' ? 'Today at a glance' : `Explore ${detail.title.toLowerCase()}`}</h2></div><span className="results-count">{visibleComplaints ? visibleComplaints.length : filtered.length} {visibleComplaints ? 'requests' : filtered.length === 1 ? 'item' : 'items'}</span></div>
         {recordsError && <div className="management-alert" role="alert">{recordsError}</div>}
         <div className="module-row-list">{visibleComplaints ? visibleComplaints.map((record, index) => <article className="module-row" key={record.id}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{record.title}</strong><span>{record.details}</span></div>{user.role === 'Staff' && <select className="complaint-status-select" aria-label={`Update ${record.title}`} value={record.status} onChange={(event) => updateComplaint(record, event.target.value)}>{['Open', 'In progress', 'Resolved'].map((status) => <option key={status}>{status}</option>)}</select>}</article>) : filtered.map((row, index) => { const [title, description, action, phoneNumber] = row; const telHref = page === 'emergency' && phoneNumber ? `tel:${String(phoneNumber).replace(/\D+/g, '')}` : 'tel:112'; return <article className="module-row" key={`${title}-${index}`}><span className="module-row-index">{String(index + 1).padStart(2, '0')}</span><div className="module-row-body"><strong>{title}</strong><span>{description}</span></div>{page === 'emergency' && <a className="emergency-direct" href={telHref} aria-label={`Call ${title}`} onClick={(event) => { event.preventDefault(); runAction(action) }}><Phone size={15} /></a>}<button className="module-row-action" onClick={() => runAction(action)}>{page === 'emergency' ? 'Call now' : action}<ArrowRight size={13} /></button></article> })}{visibleComplaints && visibleComplaints.length === 0 && <div className="module-no-results">{studentExperience ? 'You have not sent any requests yet.' : 'There are no requests assigned to your account.'}</div>}{!visibleComplaints && filtered.length === 0 && <div className="module-no-results">Nothing here just yet. Try a different search.</div>}</div>
       </section>}

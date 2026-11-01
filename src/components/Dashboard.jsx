@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowRight, Building2, CalendarDays, ChartNoAxesCombined,
-  ChevronRight, Flame, GraduationCap, HeartPulse,
-  Map, Megaphone, MessageCircle, MessageSquareWarning, PackageSearch,
+  ArrowRight, Building2, CalendarDays, ChartNoAxesCombined, ChevronRight, ClipboardList,
+  Flame, GraduationCap, HeartPulse, MapPinned, Megaphone, MessageCircle, Search,
   Settings2, ShieldAlert, Sparkles, Star, Trophy, UserRound, UsersRound, Utensils,
 } from 'lucide-react'
 import { api } from '../api/client'
@@ -11,26 +10,26 @@ import { canSeePage } from '../auth/access'
 
 const day = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
 const quickAccessFeatures = [
-  { id: 'notices', name: 'Notices', description: 'Campus updates', icon: Megaphone, tone: 'gold' },
-  { id: 'events', name: 'Events & Clubs', description: 'Events and groups', icon: CalendarDays, tone: 'blue' },
-  { id: 'sports', name: 'Sports', description: 'Teams and wellness', icon: Trophy, tone: 'teal' },
-  { id: 'hostel', name: 'Hostel', description: 'Residence services', icon: Building2, tone: 'blue' },
-  { id: 'food', name: 'Dining & Mess', description: 'Menus and meals', icon: Utensils, tone: 'coral' },
-  { id: 'canteen', name: 'Canteen Orders', description: 'Manage orders', icon: Utensils, tone: 'gold' },
-  { id: 'complaints', name: 'Complaints', description: 'Get campus support', icon: MessageSquareWarning, tone: 'blue' },
-  { id: 'lost-found', name: 'Lost & Found', description: 'Find or report items', icon: PackageSearch, tone: 'teal' },
-  { id: 'campus-voice', name: 'Campus Voice', description: 'Share an idea', icon: MessageCircle, tone: 'purple' },
-  { id: 'skill-exchange', name: 'Skill Exchange', description: 'Share a skill', icon: UsersRound, tone: 'teal' },
-  { id: 'teacher-review', name: 'Faculty Reviews', description: 'Course feedback', icon: Star, tone: 'gold' },
-  { id: 'copilot', name: 'Campus AI', description: 'Ask your campus copilot', icon: Sparkles, tone: 'purple' },
-  { id: 'profile', name: 'Profile', description: 'Your account', icon: UserRound, tone: 'teal' },
-  { id: 'settings', name: 'Settings', description: 'Your preferences', icon: Settings2, tone: 'blue' },
-  { id: 'navigation', name: 'Campus Map', description: 'Places and directions', icon: Map, tone: 'teal' },
-  { id: 'emergency', name: 'Emergency', description: 'Campus support', icon: ShieldAlert, tone: 'coral' },
-  { id: 'analytics', name: 'Campus Insights', description: 'Campus operations', icon: ChartNoAxesCombined, tone: 'purple' },
-  { id: 'users', name: 'User Management', description: 'Campus accounts', icon: UsersRound, tone: 'blue' },
-  { id: 'campus-management', name: 'Campus Management', description: 'Campus services', icon: Settings2, tone: 'gold' },
-  { id: 'sports-management', name: 'Sports Management', description: 'Teams and activities', icon: Trophy, tone: 'coral' },
+  { id: 'notices', name: 'Notices', description: 'Campus updates', icon: Megaphone, tone: 'royal-blue' },
+  { id: 'events', name: 'Events & Clubs', description: 'Events and groups', icon: CalendarDays, tone: 'purple' },
+  { id: 'sports', name: 'Sports', description: 'Teams and wellness', icon: Trophy, tone: 'orange' },
+  { id: 'hostel', name: 'Hostel', description: 'Residence services', icon: Building2, tone: 'indigo' },
+  { id: 'food', name: 'Dining & Mess', description: 'Menus and meals', icon: Utensils, tone: 'warm-amber' },
+  { id: 'canteen', name: 'Canteen Orders', description: 'Manage orders', icon: Utensils, tone: 'warm-amber' },
+  { id: 'complaints', name: 'Complaints', description: 'Get campus support', icon: ClipboardList, tone: 'coral-red' },
+  { id: 'lost-found', name: 'Lost & Found', description: 'Find or report items', icon: Search, tone: 'golden-yellow' },
+  { id: 'campus-voice', name: 'Campus Voice', description: 'Share an idea', icon: MessageCircle, tone: 'teal' },
+  { id: 'skill-exchange', name: 'Skill Exchange', description: 'Share a skill', icon: UsersRound, tone: 'emerald-green' },
+  { id: 'teacher-review', name: 'Faculty Reviews', description: 'Course feedback', icon: Star, tone: 'rose-pink' },
+  { id: 'copilot', name: 'Campus AI', description: 'Ask your campus copilot', icon: Sparkles, tone: 'violet' },
+  { id: 'profile', name: 'Profile', description: 'Your account', icon: UserRound, tone: 'sky-blue' },
+  { id: 'settings', name: 'Settings', description: 'Your preferences', icon: Settings2, tone: 'slate-blue' },
+  { id: 'navigation', name: 'Campus Map', description: 'Places and directions', icon: MapPinned, tone: 'cyan-blue' },
+  { id: 'emergency', name: 'Emergency', description: 'Campus support', icon: ShieldAlert, tone: 'strong-red' },
+  { id: 'analytics', name: 'Campus Insights', description: 'Campus operations', icon: ChartNoAxesCombined, tone: 'cyan-blue' },
+  { id: 'users', name: 'User Management', description: 'Campus accounts', icon: UsersRound, tone: 'slate-blue' },
+  { id: 'campus-management', name: 'Campus Management', description: 'Campus services', icon: Settings2, tone: 'indigo' },
+  { id: 'sports-management', name: 'Sports Management', description: 'Teams and activities', icon: Trophy, tone: 'orange' },
   { id: 'department-requests', name: 'Student Requests', description: 'Department requests', icon: UsersRound, tone: 'teal' },
   { id: 'department-students', name: 'Department Students', description: 'Student directory', icon: GraduationCap, tone: 'purple' },
 ]
@@ -191,7 +190,7 @@ export default function Dashboard({ user, onNavigate, onAction, onAskCopilot = o
 
       <section className="quick-access-section" aria-labelledby="quick-access-heading">
         <div className="quick-access-heading"><div><span className="section-eyebrow">YOUR CAMPUS, ONE TAP AWAY</span><h2 id="quick-access-heading">Quick Access</h2></div></div>
-        <div className="quick-access-grid">{visibleQuickAccess.map(({ id, name, description, icon: Icon, tone }) => <button className={`quick-access-card quick-access-${tone}`} key={id} onClick={() => onNavigate(id)}><span className="quick-access-icon"><Icon size={19} strokeWidth={1.9}/></span><span className="quick-access-copy"><strong>{name}</strong><small>{description}</small></span></button>)}</div>
+        <div className="quick-access-grid">{visibleQuickAccess.map(({ id, name, description, icon: Icon, tone }) => <button className={`quick-access-card quick-access-${tone}`} key={id} onClick={() => onNavigate(id)}><span className="quick-access-icon" aria-hidden="true"><Icon size={19} strokeWidth={1.9}/></span><span className="quick-access-copy"><strong>{name}</strong><small>{description}</small></span><ChevronRight className="quick-access-arrow" size={15} aria-hidden="true" /></button>)}</div>
       </section>
 
       {overviewDataError && <div className="faculty-overview-error" role="alert"><span>Some campus updates could not be loaded: {overviewDataError}</span><button onClick={() => setOverviewDataRetry((retry) => retry + 1)}>Retry</button></div>}
